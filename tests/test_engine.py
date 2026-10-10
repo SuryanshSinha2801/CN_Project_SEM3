@@ -124,6 +124,7 @@ def test_broken_route_scenario_builds_expected_timeline() -> None:
         (0, EventType.SIMULATION_STARTED),
         (0, EventType.MESSAGE_CREATED),
         (2, EventType.LINK_FAILED),
+        (15, EventType.MESSAGE_EXPIRED),
         (15, EventType.LINK_RESTORED),
         (15, EventType.SIMULATION_ENDED),
     ]

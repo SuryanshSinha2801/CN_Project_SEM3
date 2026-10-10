@@ -18,17 +18,21 @@ def schedule_scenario(scenario: ScenarioConfig) -> SimulationEngine:
     )
 
     for message in scenario.messages:
+        identity = {"message_id": message.message_id, "copy_id": "original"}
         engine.schedule_at(
             message.creation_time,
             EventType.MESSAGE_CREATED,
             {
-                "message_id": message.message_id,
+                **identity,
                 "source": message.source,
                 "destination": message.destination,
                 "size_bytes": message.size_bytes,
                 "ttl_seconds": message.ttl_seconds,
             },
         )
+        expiry_time = message.creation_time + message.ttl_seconds
+        if expiry_time <= scenario.duration_seconds:
+            engine.schedule_at(expiry_time, EventType.MESSAGE_EXPIRED, identity)
 
     for failure in scenario.forced_link_failures:
         link = {"node_a": failure.node_a, "node_b": failure.node_b}
@@ -41,4 +45,3 @@ def schedule_scenario(scenario: ScenarioConfig) -> SimulationEngine:
         {"scenario_name": scenario.name},
     )
     return engine
-

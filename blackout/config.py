@@ -111,6 +111,7 @@ class ScenarioConfig(StrictModel):
             raise ValueError("node IDs must be unique")
 
         known_nodes = set(node_ids)
+        nodes_by_id = {node.node_id: node for node in self.nodes}
         for node in self.nodes:
             if node.position.x > self.area.width or node.position.y > self.area.height:
                 raise ValueError(f"node {node.node_id!r} is outside the simulation area")
@@ -127,6 +128,11 @@ class ScenarioConfig(StrictModel):
             if message.creation_time >= self.duration_seconds:
                 raise ValueError(
                     f"message {message.message_id!r} is created after the simulation ends"
+                )
+            source = nodes_by_id[message.source]
+            if message.size_bytes > source.buffer_capacity_bytes:
+                raise ValueError(
+                    f"message {message.message_id!r} exceeds source buffer capacity"
                 )
 
         for failure in self.forced_link_failures:

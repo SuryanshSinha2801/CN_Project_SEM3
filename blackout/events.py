@@ -18,6 +18,7 @@ class EventType(StrEnum):
     LINK_FAILED = "link_failed"
     LINK_RESTORED = "link_restored"
     MESSAGE_BUFFERED = "message_buffered"
+    MESSAGE_EXPIRED = "message_expired"
     FORWARD_DECISION = "forward_decision"
     TRANSFER_COMPLETED = "transfer_completed"
     MESSAGE_DELIVERED = "message_delivered"
@@ -36,4 +37,3 @@ class SimulationEvent:
     sequence_number: int
     event_type: EventType = field(compare=False)
     payload: Mapping[str, Any] = field(default_factory=dict, compare=False)
-
