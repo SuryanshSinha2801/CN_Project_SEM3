@@ -42,6 +42,30 @@ def test_message_created_is_buffered_at_source_and_emits_event() -> None:
     assert buffered.payload["free_bytes"] == 7168
 
 
+def test_random_active_link_failure_is_seeded_and_restored() -> None:
+    scenario = load_scenario(PROJECT_ROOT / "configs" / "presentation.yaml")
+    simulation = build_simulation(
+        scenario.model_copy(update={"forced_link_failures": ()})
+    )
+    simulation.run(until=0)
+
+    active_before = simulation.topology.active_contacts
+    failed_link = simulation.break_random_active_link(duration_seconds=2)
+
+    assert failed_link in active_before
+    simulation.run(until=0)
+    assert failed_link in simulation.topology.blocked_links
+    simulation.run(until=2)
+    assert failed_link not in simulation.topology.blocked_links
+    failures = [
+        event
+        for event in simulation.engine.event_log
+        if event.event_type is EventType.LINK_FAILED
+        and event.payload.get("random_failure")
+    ]
+    assert len(failures) == 1
+
+
 def test_ttl_event_expires_message_and_reclaims_source_buffer() -> None:
     scenario = load_scenario(PROJECT_ROOT / "configs" / "broken_route.yaml")
     simulation = build_simulation(scenario)

@@ -94,6 +94,30 @@ class ScenarioSimulation:
     def run(self, until: float | None = None) -> tuple[SimulationEvent, ...]:
         return self._engine.run(until)
 
+    def break_random_active_link(self, duration_seconds: float = 3) -> Link | None:
+        """Schedule a seeded random active-link failure and its restoration.
+
+        The engine-local random generator makes the chosen link reproducible for the
+        scenario seed. ``None`` means that no live link is currently available.
+        """
+
+        if duration_seconds <= 0:
+            raise ValueError("failure duration must be positive")
+        if self._engine.current_time >= self._scenario.duration_seconds:
+            return None
+        candidates = sorted(self._topology.active_contacts)
+        if not candidates:
+            return None
+        link = self._engine.random.choice(candidates)
+        restore_time = min(
+            self._engine.current_time + duration_seconds,
+            self._scenario.duration_seconds,
+        )
+        payload = {"node_a": link[0], "node_b": link[1], "random_failure": True}
+        self._engine.schedule(EventType.LINK_FAILED, payload)
+        self._engine.schedule_at(restore_time, EventType.LINK_RESTORED, payload)
+        return link
+
     def reset(self) -> None:
         """Rebuild pristine domain state and schedule the original trace again."""
 
@@ -218,12 +242,34 @@ class ScenarioSimulation:
         self._topology.reconcile(event.event_time, engine, reason="node_moved")
 
     def _on_link_failed(self, event: SimulationEvent, engine: SimulationEngine) -> None:
-        self._topology.fail_link(
-            str(event.payload["node_a"]),
-            str(event.payload["node_b"]),
-            event.event_time,
-            engine,
-        )
+        node_a = str(event.payload["node_a"])
+        node_b = str(event.payload["node_b"])
+        self._topology.fail_link(node_a, node_b, event.event_time, engine)
+
+        # Detect in-flight transfers on the failed edge immediately. Custody remains
+        # at the sender, then the routing policy can select another live neighbor.
+        affected_sources: set[str] = set()
+        for pending in tuple(self._pending_transfers):
+            identity = (pending[0], pending[1])
+            to_node = pending[2]
+            message = self._messages.get(identity)
+            if message is None:
+                continue
+            from_node = message.last_custody_holder
+            if {from_node, to_node} != {node_a, node_b}:
+                continue
+            self._pending_transfers.discard(pending)
+            affected_sources.add(from_node)
+            self._schedule_transfer_outcome(
+                EventType.TRANSFER_FAILED,
+                identity,
+                from_node,
+                to_node,
+                engine,
+                reason="link failure detected; custody retained for rerouting",
+            )
+        for holder_id in sorted({node_a, node_b, *affected_sources}):
+            self._consider_forwarding(holder_id, engine)
 
     def _on_link_restored(self, event: SimulationEvent, engine: SimulationEngine) -> None:
         node_a = str(event.payload["node_a"])
@@ -353,6 +399,8 @@ class ScenarioSimulation:
         retry_count = int(event.payload.get("retry_count", 0))
         transfer_budget = int(event.payload.get("transfer_budget", 0))
         pending_key = (*identity, to_node_id)
+        if pending_key not in self._pending_transfers:
+            return
         message = self._messages.get(identity)
         source = self._nodes[from_node_id]
         receiver = self._nodes[to_node_id]
@@ -747,6 +795,7 @@ class ScenarioSimulation:
             creation_time=config.creation_time,
             size_bytes=config.size_bytes,
             ttl_seconds=config.ttl_seconds,
+            routing_metadata={"content": config.content},
         )
 
     def _build_router(self) -> AdaptiveRouter:

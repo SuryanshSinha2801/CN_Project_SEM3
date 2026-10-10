@@ -101,6 +101,20 @@ Suggested narration while pressing **Step Event**:
 Green lines are active contacts, dashed red lines are forced failures, the gold ring is
 the current custodian, and the right panel explains each event and Adaptive decision.
 
+### Interactive message and random failure
+
+1. Enter any message in the **Message** field.
+2. Select different nodes under **Source** and **Destination**.
+3. Keep **Automatic random failures** selected.
+4. Click **Start Custom Message**, followed by **Play**.
+5. Point out the red failed link and the immediate `transfer_failed` event. The sender
+   keeps custody, and later `forward_decision` events explain the alternate route.
+6. Use **Break Random Link** if you want to inject another temporary failure manually.
+
+Random selection uses the scenario seed, so resetting and replaying the same inputs gives
+the same failure. Short text is carried in a 1 KiB simulated application packet, while
+longer text uses its actual UTF-8 byte length.
+
 ## 7. Reproducible comparison
 
 ```powershell

@@ -83,8 +83,10 @@ def test_failed_transfer_retains_custody_during_partition() -> None:
     assert message.hop_count == 1
     assert message.last_custody_holder == "B"
     assert len(failures) == 1
-    assert failures[0].event_time == 2
-    assert failures[0].payload["reason"] == "contact ended before transfer completion"
+    assert failures[0].event_time == 1.5
+    assert failures[0].payload["reason"] == (
+        "link failure detected; custody retained for rerouting"
+    )
     assert simulation.nodes["A"].counters.messages_forwarded == 1
     assert simulation.nodes["B"].counters.messages_forwarded == 0
 

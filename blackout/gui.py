@@ -7,7 +7,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
 
-from blackout.config import load_scenario
+from blackout.config import MessageConfig, ScenarioConfig, load_scenario
 from blackout.events import EventType, SimulationEvent
 from blackout.models import MessageState, NodeState
 from blackout.simulation import ScenarioSimulation, build_simulation
@@ -15,6 +15,53 @@ from blackout.simulation import ScenarioSimulation, build_simulation
 CANVAS_WIDTH = 760
 CANVAS_HEIGHT = 520
 NODE_RADIUS = 24
+
+
+def build_interactive_scenario(
+    base: ScenarioConfig, content: str, source: str, destination: str
+) -> ScenarioConfig:
+    """Create a validated one-message scenario from GUI input."""
+
+    normalized_content = content.strip()
+    if not normalized_content:
+        raise ValueError("Enter a message before starting the simulation")
+    known_nodes = {node.node_id for node in base.nodes}
+    if source not in known_nodes or destination not in known_nodes:
+        raise ValueError("Select valid source and destination nodes")
+    if source == destination:
+        raise ValueError("Source and destination must be different")
+    encoded_size = len(normalized_content.encode("utf-8"))
+    # Model one 1 KiB application packet so short demo text still has realistic
+    # buffer cost and produces the same Adaptive-routing behavior as the scenario.
+    size_bytes = max(1024, encoded_size)
+    source_node = next(node for node in base.nodes if node.node_id == source)
+    if size_bytes > source_node.buffer_capacity_bytes:
+        raise ValueError(
+            f"Message packet is {size_bytes} bytes but node {source} can store only "
+            f"{source_node.buffer_capacity_bytes} bytes"
+        )
+    message = MessageConfig(
+        message_id="interactive-message",
+        source=source,
+        destination=destination,
+        size_bytes=size_bytes,
+        creation_time=0,
+        ttl_seconds=base.duration_seconds,
+        content=normalized_content,
+    )
+    return base.model_copy(
+        update={
+            "name": f"{base.name}-interactive",
+            "messages": (message,),
+            # Keep background exclusions that shape the demo topology, while
+            # replacing timed scripted failures with live random failures.
+            "forced_link_failures": tuple(
+                failure
+                for failure in base.forced_link_failures
+                if failure.start_time == 0
+            ),
+        }
+    )
 
 
 def event_summary(event: SimulationEvent) -> str:
@@ -25,7 +72,8 @@ def event_summary(event: SimulationEvent) -> str:
     if event_type in {EventType.CONTACT_STARTED, EventType.CONTACT_ENDED}:
         return f"{payload['node_a']} ↔ {payload['node_b']}"
     if event_type in {EventType.LINK_FAILED, EventType.LINK_RESTORED}:
-        return f"{payload['node_a']}–{payload['node_b']}"
+        kind = "random" if payload.get("random_failure") else "scripted"
+        return f"{payload['node_a']}–{payload['node_b']} ({kind})"
     if event_type is EventType.FORWARD_DECISION:
         target = payload.get("to_node") or "none"
         return f"{payload['action']}: {payload['from_node']} → {target} — {payload['reason']}"
@@ -73,6 +121,7 @@ class BlackoutApp:
         self.simulation: ScenarioSimulation = build_simulation(self.scenario)
         self.playing = False
         self.after_id: str | None = None
+        self.next_random_failure_time: float | None = None
 
         root.title("BLACKOUT — Delay-Tolerant Network Simulation")
         root.geometry("1280x760")
@@ -121,6 +170,59 @@ class BlackoutApp:
                 "Gold ring = message custodian"
             ),
         ).pack(side="right")
+
+        composer = ttk.LabelFrame(
+            self.root, text="Interactive message and rerouting", padding=8
+        )
+        composer.pack(fill="x", padx=16, pady=(0, 10))
+        message_row = ttk.Frame(composer)
+        message_row.pack(fill="x", pady=(0, 6))
+        action_row = ttk.Frame(composer)
+        action_row.pack(fill="x")
+        ttk.Label(message_row, text="Message:").pack(side="left")
+        self.message_var = tk.StringVar(value="Emergency data: alternate route required")
+        ttk.Entry(message_row, textvariable=self.message_var).pack(
+            side="left", fill="x", expand=True, padx=(4, 0)
+        )
+        node_ids = [node.node_id for node in self.scenario.nodes]
+        ttk.Label(action_row, text="Source:").pack(side="left")
+        self.source_var = tk.StringVar(value=node_ids[0])
+        source_box = ttk.Combobox(
+            action_row,
+            textvariable=self.source_var,
+            values=node_ids,
+            state="readonly",
+            width=6,
+        )
+        source_box.pack(side="left", padx=(4, 12))
+        ttk.Label(action_row, text="Destination:").pack(side="left")
+        default_destination = "D" if "D" in node_ids else node_ids[-1]
+        self.destination_var = tk.StringVar(value=default_destination)
+        destination_box = ttk.Combobox(
+            action_row,
+            textvariable=self.destination_var,
+            values=node_ids,
+            state="readonly",
+            width=6,
+        )
+        destination_box.pack(side="left", padx=(4, 12))
+        self.auto_failures_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            action_row,
+            text="Automatic random failures",
+            variable=self.auto_failures_var,
+        ).pack(side="left", padx=(0, 10))
+        ttk.Button(
+            action_row,
+            text="Start Custom Message",
+            style="Accent.TButton",
+            command=self.start_custom_message,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            action_row,
+            text="Break Random Link",
+            command=self.break_random_link,
+        ).pack(side="left")
 
         body = ttk.Panedwindow(self.root, orient="horizontal")
         body.pack(fill="both", expand=True, padx=16, pady=(0, 14))
@@ -183,7 +285,60 @@ class BlackoutApp:
             self.status_var.set("Simulation complete")
             return
         self._record_event(event)
+        self._maybe_inject_random_failure()
         self._render()
+
+    def start_custom_message(self) -> None:
+        """Rebuild the simulation with user-selected message endpoints."""
+
+        try:
+            self.scenario = build_interactive_scenario(
+                load_scenario(self.scenario_path),
+                self.message_var.get(),
+                self.source_var.get(),
+                self.destination_var.get(),
+            )
+        except ValueError as exc:
+            messagebox.showerror("Invalid interactive message", str(exc))
+            return
+        self.playing = False
+        if self.after_id is not None:
+            self.root.after_cancel(self.after_id)
+            self.after_id = None
+        self.simulation = build_simulation(self.scenario)
+        self.next_random_failure_time = 0 if self.auto_failures_var.get() else None
+        self._clear_trace()
+        self.status_var.set(
+            f"Custom message ready: {self.source_var.get()} → "
+            f"{self.destination_var.get()} — press Play"
+        )
+        self._render()
+
+    def break_random_link(self) -> None:
+        """Fail one currently active contact using the scenario's seeded RNG."""
+
+        link = self.simulation.break_random_active_link(duration_seconds=3)
+        if link is None:
+            self.status_var.set("No active link is currently available to break")
+            return
+        self.status_var.set(
+            f"Random failure queued for {link[0]}–{link[1]}; rerouting will be detected"
+        )
+
+    def _maybe_inject_random_failure(self) -> None:
+        if self.next_random_failure_time is None:
+            return
+        now = self.simulation.engine.current_time
+        if now < self.next_random_failure_time:
+            return
+        link = self.simulation.break_random_active_link(duration_seconds=8)
+        # One automatic failure keeps the demonstration understandable and still
+        # allows delivery. The presenter can inject additional failures manually.
+        self.next_random_failure_time = None
+        if link is not None:
+            self.status_var.set(
+                f"Auto failure: {link[0]}–{link[1]} broke; finding alternate route"
+            )
 
     def toggle_play(self) -> None:
         self.playing = not self.playing
@@ -212,13 +367,19 @@ class BlackoutApp:
             self.root.after_cancel(self.after_id)
             self.after_id = None
         self.simulation.reset()
+        self.next_random_failure_time = (
+            0 if self.auto_failures_var.get() and "-interactive" in self.scenario.name else None
+        )
+        self._clear_trace()
+        self.status_var.set("Reset complete — deterministic seed restored")
+        self._render()
+
+    def _clear_trace(self) -> None:
         for item in self.event_tree.get_children():
             self.event_tree.delete(item)
         self.decision_var.set(
             "No routing decision yet.\nC=connectivity, P=proximity, B=buffer, S=node state."
         )
-        self.status_var.set("Reset complete — deterministic seed restored")
-        self._render()
 
     def _record_event(self, event: SimulationEvent) -> None:
         self.event_tree.insert(

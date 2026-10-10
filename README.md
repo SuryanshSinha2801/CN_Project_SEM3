@@ -108,6 +108,12 @@ connectivity (C), proximity (P), buffer availability (B), node state (S), total 
 and the hysteresis threshold. Green lines are active contacts, dashed red lines are forced
 failures, and the gold ring identifies the current message custodian.
 
+For an interactive run, type a message, choose different source and destination nodes,
+leave **Automatic random failures** enabled, and click **Start Custom Message**, then
+**Play**. The simulator breaks a seeded random live link, records the detection, retains
+custody at the sender, and applies the routing policy to find an alternate contact. Use
+**Break Random Link** to inject another three-second failure manually.
+
 The full presentation narrative is in [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
 
 ## Run experiments and export results

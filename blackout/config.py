@@ -53,6 +53,7 @@ class MessageConfig(StrictModel):
     size_bytes: PositiveInt
     creation_time: NonNegativeFloat = 0
     ttl_seconds: PositiveFloat = 120
+    content: str = Field(default="", max_length=8192)
 
     @model_validator(mode="after")
     def source_and_destination_differ(self) -> MessageConfig:

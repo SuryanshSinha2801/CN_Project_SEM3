@@ -28,6 +28,7 @@ def schedule_scenario(scenario: ScenarioConfig) -> SimulationEngine:
                 "destination": message.destination,
                 "size_bytes": message.size_bytes,
                 "ttl_seconds": message.ttl_seconds,
+                "content": message.content,
             },
         )
         expiry_time = message.creation_time + message.ttl_seconds
