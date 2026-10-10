@@ -9,13 +9,17 @@ from blackout.simulation.runtime import (
     build_simulation,
 )
 from blackout.simulation.scenario import schedule_scenario
+from blackout.simulation.topology import Link, TopologyManager, canonical_link
 
 __all__ = [
     "MessageSnapshot",
+    "Link",
     "NodeSnapshot",
     "ScenarioSimulation",
     "SimulationEngine",
     "SimulationSnapshot",
+    "TopologyManager",
     "build_simulation",
+    "canonical_link",
     "schedule_scenario",
 ]

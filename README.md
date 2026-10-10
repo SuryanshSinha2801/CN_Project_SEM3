@@ -4,7 +4,7 @@ BLACKOUT is a Python-based educational simulator for studying communication in i
 
 ## Project status
 
-The project has entered implementation. The repository now contains the approved modular design, validated YAML scenarios, a deterministic discrete-event engine, core domain models, and a runnable scenario state that creates, buffers, snapshots, and expires messages. The next milestone is range-based contact detection and single-copy store-carry-forward.
+The project has entered implementation. The repository now contains the approved modular design, validated YAML scenarios, a deterministic discrete-event engine, core domain models, message lifecycle handling, and deterministic range-based contacts with forced-link failures. The next milestone is single-copy store-carry-forward routing.
 
 ## Planned capabilities
 
@@ -96,6 +96,7 @@ python -m pytest
 - `blackout/simulation/engine.py` - deterministic simulated-time scheduler and trace
 - `blackout/simulation/scenario.py` - initial scenario-to-event translation
 - `blackout/simulation/runtime.py` - configured nodes, message lifecycle handlers, and snapshots
+- `blackout/simulation/topology.py` - range contacts, movement reconciliation, and failures
 - `blackout/models/message.py` - immutable message identity, TTL, hops, and lifecycle
 - `blackout/models/buffer.py` - byte-capacity storage, duplicate checks, and expiry
 - `blackout/models/node.py` - node position, state, contacts, counters, and local buffer

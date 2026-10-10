@@ -27,11 +27,10 @@ def test_message_created_is_buffered_at_source_and_emits_event() -> None:
     processed = simulation.run(until=0)
     message = simulation.messages[("demo", "original")]
 
-    assert [event.event_type for event in processed] == [
-        EventType.SIMULATION_STARTED,
-        EventType.MESSAGE_CREATED,
-        EventType.MESSAGE_BUFFERED,
-    ]
+    event_types = [event.event_type for event in processed]
+    assert event_types[:2] == [EventType.SIMULATION_STARTED, EventType.MESSAGE_CREATED]
+    assert event_types.count(EventType.CONTACT_STARTED) == 3
+    assert event_types[-1] is EventType.MESSAGE_BUFFERED
     assert message.state is MessageState.BUFFERED
     assert message.last_custody_holder == "A"
     assert simulation.nodes["A"].buffer.get("demo") is message
@@ -52,6 +51,26 @@ def test_ttl_event_expires_message_and_reclaims_source_buffer() -> None:
     assert EventType.MESSAGE_EXPIRED in [event.event_type for event in simulation.engine.event_log]
 
 
+def test_broken_route_failure_ends_the_b_c_contact() -> None:
+    scenario = load_scenario(PROJECT_ROOT / "configs" / "broken_route.yaml")
+    simulation = build_simulation(scenario)
+
+    simulation.run()
+    b_c_events = [
+        event
+        for event in simulation.engine.event_log
+        if event.event_type in {EventType.CONTACT_STARTED, EventType.CONTACT_ENDED}
+        and (event.payload["node_a"], event.payload["node_b"]) == ("B", "C")
+    ]
+
+    assert [(event.event_time, event.event_type) for event in b_c_events] == [
+        (0, EventType.CONTACT_STARTED),
+        (2, EventType.CONTACT_ENDED),
+    ]
+    assert b_c_events[-1].payload["reason"] == "forced_failure"
+    assert "C" not in simulation.nodes["B"].current_neighbors
+
+
 def test_snapshot_reflects_state_after_each_step() -> None:
     scenario = load_scenario(PROJECT_ROOT / "configs" / "broken_route.yaml")
     simulation = build_simulation(scenario)
@@ -65,6 +84,7 @@ def test_snapshot_reflects_state_after_each_step() -> None:
     assert snapshot.messages[0].state is MessageState.BUFFERED
     assert snapshot.messages[0].remaining_ttl == 15
     assert source.buffered_message_copies == (("demo", "original"),)
+    assert snapshot.active_contacts == (("A", "B"), ("B", "C"), ("C", "E"))
 
 
 def test_reset_restores_pristine_deterministic_state() -> None:
@@ -104,4 +124,3 @@ def test_config_rejects_message_larger_than_its_source_buffer() -> None:
 
     with pytest.raises(ValidationError, match="exceeds source buffer"):
         ScenarioConfig.model_validate(raw)
-

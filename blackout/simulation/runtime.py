@@ -11,6 +11,7 @@ from blackout.events import EventType, SimulationEvent
 from blackout.models import Message, MessageState, Node, NodeState, Position
 from blackout.simulation.engine import SimulationEngine
 from blackout.simulation.scenario import schedule_scenario
+from blackout.simulation.topology import Link, TopologyManager
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +46,7 @@ class SimulationSnapshot:
     simulated_time: float
     nodes: tuple[NodeSnapshot, ...]
     messages: tuple[MessageSnapshot, ...]
+    active_contacts: tuple[Link, ...]
 
 
 class ScenarioSimulation:
@@ -55,6 +57,7 @@ class ScenarioSimulation:
         self._message_configs = {message.message_id: message for message in scenario.messages}
         self._nodes: dict[str, Node] = {}
         self._messages: dict[tuple[str, str], Message] = {}
+        self._topology: TopologyManager = TopologyManager({})
         self._engine = SimulationEngine(seed=scenario.seed)
         self.reset()
 
@@ -73,6 +76,10 @@ class ScenarioSimulation:
     @property
     def messages(self) -> Mapping[tuple[str, str], Message]:
         return MappingProxyType(self._messages)
+
+    @property
+    def topology(self) -> TopologyManager:
+        return self._topology
 
     def step(self) -> SimulationEvent | None:
         return self._engine.step()
@@ -94,9 +101,19 @@ class ScenarioSimulation:
             for config in self._scenario.nodes
         }
         self._messages = {}
+        initially_blocked = (
+            (failure.node_a, failure.node_b)
+            for failure in self._scenario.forced_link_failures
+            if failure.start_time == 0
+        )
+        self._topology = TopologyManager(self._nodes, initially_blocked)
         self._engine = schedule_scenario(self._scenario)
+        self._engine.register_handler(EventType.SIMULATION_STARTED, self._on_simulation_started)
         self._engine.register_handler(EventType.MESSAGE_CREATED, self._on_message_created)
         self._engine.register_handler(EventType.MESSAGE_EXPIRED, self._on_message_expired)
+        self._engine.register_handler(EventType.NODE_MOVED, self._on_node_moved)
+        self._engine.register_handler(EventType.LINK_FAILED, self._on_link_failed)
+        self._engine.register_handler(EventType.LINK_RESTORED, self._on_link_restored)
 
     def snapshot(self) -> SimulationSnapshot:
         """Capture state without exposing mutable node or message objects."""
@@ -128,7 +145,13 @@ class ScenarioSimulation:
             simulated_time=self._engine.current_time,
             nodes=node_snapshots,
             messages=message_snapshots,
+            active_contacts=tuple(sorted(self._topology.active_contacts)),
         )
+
+    def _on_simulation_started(
+        self, event: SimulationEvent, engine: SimulationEngine
+    ) -> None:
+        self._topology.reconcile(event.event_time, engine, reason="initial_range")
 
     def _on_message_created(
         self, event: SimulationEvent, engine: SimulationEngine
@@ -161,6 +184,30 @@ class ScenarioSimulation:
         holder = self._nodes[message.last_custody_holder]
         holder.buffer.expire(event.event_time)
 
+    def _on_node_moved(self, event: SimulationEvent, engine: SimulationEngine) -> None:
+        node_id = str(event.payload["node_id"])
+        position = Position(float(event.payload["x"]), float(event.payload["y"]))
+        if position.x > self._scenario.area.width or position.y > self._scenario.area.height:
+            raise ValueError(f"node {node_id!r} moved outside the simulation area")
+        self._nodes[node_id].set_position(position)
+        self._topology.reconcile(event.event_time, engine, reason="node_moved")
+
+    def _on_link_failed(self, event: SimulationEvent, engine: SimulationEngine) -> None:
+        self._topology.fail_link(
+            str(event.payload["node_a"]),
+            str(event.payload["node_b"]),
+            event.event_time,
+            engine,
+        )
+
+    def _on_link_restored(self, event: SimulationEvent, engine: SimulationEngine) -> None:
+        node_a = str(event.payload["node_a"])
+        node_b = str(event.payload["node_b"])
+        if event.event_time >= self._scenario.duration_seconds:
+            self._topology.clear_failure(node_a, node_b)
+            return
+        self._topology.restore_link(node_a, node_b, event.event_time, engine)
+
     @staticmethod
     def _make_message(config: MessageConfig) -> Message:
         return Message(
@@ -178,4 +225,3 @@ def build_simulation(scenario: ScenarioConfig) -> ScenarioSimulation:
     """Build a ready-to-step simulation from a validated scenario."""
 
     return ScenarioSimulation(scenario)
-
