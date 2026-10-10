@@ -13,6 +13,7 @@ PositiveFloat = Annotated[float, Field(gt=0)]
 NonNegativeFloat = Annotated[float, Field(ge=0)]
 Probability = Annotated[float, Field(ge=0, le=1)]
 PositiveInt = Annotated[int, Field(gt=0)]
+NonNegativeInt = Annotated[int, Field(ge=0)]
 
 
 class StrictModel(BaseModel):
@@ -104,6 +105,9 @@ class ScenarioConfig(StrictModel):
     area: AreaConfig = AreaConfig()
     routing_policy: RoutingPolicy = RoutingPolicy.ADAPTIVE
     packet_loss_probability: Probability = 0
+    ack_loss_probability: Probability = 0
+    max_link_retries: NonNegativeInt = 3
+    ack_timeout_seconds: PositiveFloat = 1
     transfer_delay_seconds: PositiveFloat = 1
     spray_copy_budget: PositiveInt = 4
     adaptive_weights: AdaptiveWeights = AdaptiveWeights()

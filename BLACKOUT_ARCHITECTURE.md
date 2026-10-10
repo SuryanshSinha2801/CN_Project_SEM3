@@ -393,15 +393,16 @@ BLACKOUT borrows only the architectural lesson that sensing/context, utility est
 | Weight overfitting | Hand-picked weights may only fit one scenario | Pre-register a baseline and run sensitivity analysis |
 | UI coupled to logic | Frame rate can alter experimental results | Drive the UI from snapshots of simulated state |
 
-## 16. Recommended implementation order
+## 16. Implementation status
 
-1. Models, event queue, scripted scenario, and deterministic tests.
-2. Contacts, buffers, and single-copy store-carry-forward.
-3. Epidemic and Binary Spray-and-Wait.
-4. Adaptive factor calculation, decisions, and logging.
-5. Transmission delay, loss, ACK, timeout, and Stop-and-Wait.
-6. Metrics and trace-replay experiment runner.
-7. Pygame visualization and controls.
-8. CRC and multi-packet transfer.
-9. Sliding Window and adaptive RTO.
-10. Separate TCP/UDP plus Wireshark demonstration and any Packet Tracer/Mininet validation.
+MVP steps 1-6 are implemented in Python 3.13. The Tkinter GUI also provides the required
+live topology, controls, and explainable trace without coupling rendering to simulation
+decisions. Pygame and steps 8-10 remain optional extensions.
+
+## 17. Recommended extension order
+
+1. Add CRC and multi-packet transfer.
+2. Add Sliding Window and adaptive RTO.
+3. Add a Pygame renderer while retaining the same simulation API.
+4. Add separate TCP/UDP plus Wireshark demonstrations.
+5. Add optional Packet Tracer or Mininet validation.

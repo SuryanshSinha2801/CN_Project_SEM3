@@ -180,6 +180,27 @@ class Message:
         self._require_active(at_time)
         object.__setattr__(self, "_state", MessageState.DROPPED)
 
+    def replicate(self, copy_id: str, to_node: str, completed_at: float) -> Message:
+        """Create a routing replica and append its first divergent hop."""
+
+        self._require_active(completed_at)
+        replica = Message(
+            message_id=self.message_id,
+            copy_id=copy_id,
+            source=self.source,
+            destination=self.destination,
+            creation_time=self.creation_time,
+            size_bytes=self.size_bytes,
+            ttl_seconds=self.ttl_seconds,
+            routing_metadata=self.routing_metadata,
+        )
+        object.__setattr__(replica, "_state", MessageState.BUFFERED)
+        object.__setattr__(replica, "_last_custody_holder", self._last_custody_holder)
+        object.__setattr__(replica, "_hop_history", self._hop_history)
+        object.__setattr__(replica, "_visited_nodes", self._visited_nodes)
+        replica.record_hop(self._last_custody_holder, to_node, completed_at)
+        return replica
+
     def _require_active(self, at_time: float) -> None:
         self._validate_observation_time(at_time)
         if self.is_terminal:

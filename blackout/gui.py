@@ -33,8 +33,25 @@ def event_summary(event: SimulationEvent) -> str:
         EventType.TRANSFER_COMPLETED,
         EventType.TRANSFER_FAILED,
         EventType.TRANSFER_ATTEMPT,
+        EventType.PACKET_SENT,
+        EventType.PACKET_RECEIVED,
+        EventType.PACKET_LOST,
+        EventType.ACK_SENT,
+        EventType.ACK_RECEIVED,
+        EventType.ACK_LOST,
+        EventType.RETRANSMISSION,
     }:
         return f"{payload['from_node']} → {payload['to_node']} ({payload['message_id']})"
+    if event_type is EventType.ROUTING_COPY_CREATED:
+        return (
+            f"copy {payload['copy_id']}: {payload['from_node']} → "
+            f"{payload['to_node']}"
+        )
+    if event_type is EventType.BUFFER_UPDATED:
+        return (
+            f"{payload['node_id']}: {payload['used_bytes']} B used, "
+            f"{payload['free_bytes']} B free"
+        )
     if event_type in {
         EventType.MESSAGE_CREATED,
         EventType.MESSAGE_BUFFERED,
@@ -57,7 +74,7 @@ class BlackoutApp:
         self.playing = False
         self.after_id: str | None = None
 
-        root.title("BLACKOUT — Adaptive Network Simulation")
+        root.title("BLACKOUT — Delay-Tolerant Network Simulation")
         root.geometry("1280x760")
         root.minsize(1050, 680)
         self._configure_style()
@@ -127,7 +144,7 @@ class BlackoutApp:
         ttk.Label(metrics, textvariable=self.metrics_var, justify="left").pack(anchor="w")
 
         decision = ttk.LabelFrame(
-            details_frame, text="Latest Adaptive decision", padding=10
+            details_frame, text="Latest routing decision", padding=10
         )
         decision.pack(fill="x", pady=(0, 8))
         self.decision_var = tk.StringVar(
@@ -310,7 +327,7 @@ class BlackoutApp:
         self.metrics_var.set(
             f"Scenario: {self.scenario.name}\n"
             f"Simulated time: {snapshot.simulated_time:g} / {self.scenario.duration_seconds:g} s\n"
-            f"Policy: BLACKOUT Adaptive (single-copy)\n"
+            f"Policy: {self.scenario.routing_policy.value}\n"
             f"Active contacts: {len(snapshot.active_contacts)}\n"
             f"Messages — buffered: {buffered}, delivered: {delivered}, expired: {expired}\n"
             f"Seed: {self.scenario.seed} (reproducible)"
@@ -351,4 +368,3 @@ def launch_gui(scenario_path: str | Path) -> None:
         root.destroy()
         raise
     root.mainloop()
-

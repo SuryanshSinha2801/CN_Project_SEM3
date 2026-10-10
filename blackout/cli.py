@@ -27,6 +27,32 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("configs/presentation.yaml"),
         help="scenario YAML (default: configs/presentation.yaml)",
     )
+
+    run = subparsers.add_parser("run", help="run one scenario and export metrics/events")
+    run.add_argument("scenario", type=Path, help="path to a YAML scenario")
+    run.add_argument(
+        "--output", type=Path, default=Path("results"), help="artifact output directory"
+    )
+
+    experiment = subparsers.add_parser(
+        "experiment", help="compare routing policies over common random seeds"
+    )
+    experiment.add_argument("scenario", type=Path, help="base scenario YAML")
+    experiment.add_argument(
+        "--seeds", type=int, nargs="+", default=[1, 2, 3, 4, 5], help="random seeds"
+    )
+    experiment.add_argument(
+        "--policies",
+        nargs="+",
+        choices=["adaptive", "epidemic", "spray_and_wait"],
+        default=["adaptive", "epidemic", "spray_and_wait"],
+    )
+    experiment.add_argument(
+        "--output",
+        type=Path,
+        default=Path("results/comparison"),
+        help="artifact output directory",
+    )
     return parser
 
 
@@ -62,4 +88,48 @@ def main(argv: list[str] | None = None) -> int:
 
         launch_gui(args.scenario)
         return 0
+    if args.command == "run":
+        from blackout.experiments import export_run
+        from blackout.simulation import build_simulation
+
+        scenario = load_scenario(args.scenario)
+        simulation = build_simulation(scenario)
+        simulation.run()
+        summary = export_run(simulation, args.output)
+        _print_metrics(summary.to_dict(), console)
+        console.print(f"[green]Artifacts written to {args.output.resolve()}[/green]")
+        return 0
+    if args.command == "experiment":
+        from blackout.config import RoutingPolicy
+        from blackout.experiments import run_matrix
+
+        scenario = load_scenario(args.scenario)
+        policies = [RoutingPolicy(policy) for policy in args.policies]
+        results = run_matrix(scenario, args.seeds, policies, args.output)
+        table = Table(title="BLACKOUT routing comparison")
+        for column in ("Policy", "Seed", "Delivery", "Delay", "Copies", "Retries"):
+            table.add_column(column)
+        for result in results:
+            table.add_row(
+                result.routing_policy,
+                str(result.seed),
+                f"{result.delivery_ratio:.2f}",
+                "n/a"
+                if result.average_delay_seconds is None
+                else f"{result.average_delay_seconds:.2f}",
+                str(result.routing_copies),
+                str(result.link_retransmissions),
+            )
+        console.print(table)
+        console.print(f"[green]Comparison written to {args.output.resolve()}[/green]")
+        return 0
     return 2
+
+
+def _print_metrics(metrics: dict[str, object], console: Console) -> None:
+    table = Table(title="BLACKOUT run metrics")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    for name, value in metrics.items():
+        table.add_row(name.replace("_", " ").title(), "n/a" if value is None else str(value))
+    console.print(table)

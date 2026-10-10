@@ -4,9 +4,12 @@ BLACKOUT is a Python-based educational simulator for studying communication in i
 
 ## Project status
 
-The project has entered implementation. The repository now contains the approved modular design, validated YAML scenarios, a deterministic event engine, core domain models, range-based contacts, the full weighted BLACKOUT Adaptive policy, and a Tkinter presentation GUI. The next milestone is implementing the Epidemic and Binary Spray-and-Wait baselines.
+The Python 3.13 MVP is implemented. It includes a deterministic event engine, dynamic
+contacts and failures, finite buffers, Adaptive/Epidemic/Binary Spray-and-Wait routing,
+Stop-and-Wait reliability with ACK loss and retries, a Tkinter presentation GUI, automated
+metrics, CSV/JSON exports, and multi-seed policy comparison.
 
-## Planned capabilities
+## Implemented capabilities
 
 - Dynamic two-dimensional nodes and range-based contacts
 - Node movement, link failures, packet loss, and temporary partitions
@@ -14,11 +17,14 @@ The project has entered implementation. The repository now contains the approved
 - Epidemic Routing
 - Binary Spray-and-Wait Routing
 - Explainable BLACKOUT Adaptive Routing
-- CRC, acknowledgements, timeouts, and retransmissions
-- Stop-and-Wait and later Sliding Window demonstrations
+- Acknowledgements, timeouts, and retransmissions
+- Stop-and-Wait link reliability
 - Reproducible scenario traces and random seeds
 - Delivery, delay, hop, copy, overhead, buffer, and throughput metrics
-- Pygame visualization and CSV/graph-based experiment reporting
+- Tkinter visualization and CSV/JSON/SVG experiment reporting
+
+CRC, message fragmentation, Sliding Window, adaptive retransmission timeouts, and a more
+advanced Pygame view are optional extensions outside the completed MVP.
 
 ## Architecture
 
@@ -102,6 +108,28 @@ connectivity (C), proximity (P), buffer availability (B), node state (S), total 
 and the hysteresis threshold. Green lines are active contacts, dashed red lines are forced
 failures, and the gold ring identifies the current message custodian.
 
+The full presentation narrative is in [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
+
+## Run experiments and export results
+
+Run one configured policy and write its complete event trace and metric summary:
+
+```powershell
+python -m blackout run configs/presentation.yaml --output results/demo
+```
+
+Compare all three policies with identical scenarios and channel outcomes across seeds:
+
+```powershell
+python -m blackout experiment configs/presentation.yaml `
+  --seeds 1 2 3 4 5 6 7 8 9 10 `
+  --output results/comparison
+```
+
+The experiment produces `comparison.csv`, `delivery-comparison.svg`, and a `runs` folder
+containing each run's event CSV and metrics JSON. Routing copies and link retransmissions
+are deliberately reported as separate metrics.
+
 Run the automated tests:
 
 ```powershell
@@ -130,14 +158,18 @@ python -m pytest
 - `blackout/simulation/topology.py` - range contacts, movement reconciliation, and failures
 - `blackout/routing/single_copy.py` - explainable greedy custody forwarding
 - `blackout/routing/adaptive.py` - weighted Adaptive score, hysteresis, and cooldown
+- `blackout/metrics.py` - delivery, delay, hops, overhead, throughput, and buffer metrics
+- `blackout/experiments/` - single-run exports and fair multi-policy replay
 - `blackout/gui.py` - Tkinter presentation and event-trace interface
+- `PRESENTATION_GUIDE.md` - professor-demo script, architecture, algorithms, and viva notes
 - `configs/presentation.yaml` - scripted successful alternate-route demonstration
 - `blackout/models/message.py` - immutable message identity, TTL, hops, and lifecycle
 - `blackout/models/buffer.py` - byte-capacity storage, duplicate checks, and expiry
 - `blackout/models/node.py` - node position, state, contacts, counters, and local buffer
 - `configs/default.yaml` - baseline six-node experiment configuration
 - `configs/broken_route.yaml` - deterministic B-C failure acceptance scenario
-- `tests/` - configuration, determinism, scheduling, and scenario timeline tests
+- `tests/` - unit and integration coverage for configuration, routing, reliability, metrics,
+  determinism, and the scripted timeline
 
 ## License
 

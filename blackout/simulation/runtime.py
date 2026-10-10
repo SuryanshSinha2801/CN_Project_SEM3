@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping
 
-from blackout.config import MessageConfig, ScenarioConfig
+from blackout.config import MessageConfig, RoutingPolicy, ScenarioConfig
 from blackout.events import EventType, SimulationEvent
 from blackout.models import Message, MessageState, Node, NodeState, Position
 from blackout.routing import AdaptiveRouter, ForwardAction, ForwardDecision
@@ -58,7 +59,10 @@ class ScenarioSimulation:
         self._message_configs = {message.message_id: message for message in scenario.messages}
         self._nodes: dict[str, Node] = {}
         self._messages: dict[tuple[str, str], Message] = {}
-        self._pending_transfers: dict[tuple[str, str], tuple[str, str]] = {}
+        self._pending_transfers: set[tuple[str, str, str]] = set()
+        self._copy_budgets: dict[tuple[str, str], int] = {}
+        self._delivered_message_ids: set[str] = set()
+        self._copy_sequence = 0
         self._router = self._build_router()
         self._topology: TopologyManager = TopologyManager({})
         self._engine = SimulationEngine(seed=scenario.seed)
@@ -104,7 +108,10 @@ class ScenarioSimulation:
             for config in self._scenario.nodes
         }
         self._messages = {}
-        self._pending_transfers = {}
+        self._pending_transfers = set()
+        self._copy_budgets = {}
+        self._delivered_message_ids = set()
+        self._copy_sequence = 0
         self._router = self._build_router()
         initially_blocked = (
             (failure.node_a, failure.node_b)
@@ -171,6 +178,7 @@ class ScenarioSimulation:
         source.buffer.put(message, event.event_time)
         source.counters.messages_generated += 1
         self._messages[message.identity] = message
+        self._copy_budgets[message.identity] = self._scenario.spray_copy_budget
         self._schedule_buffered_event(message, source, engine)
 
     def _on_message_buffered(
@@ -181,13 +189,19 @@ class ScenarioSimulation:
     def _on_message_expired(
         self, event: SimulationEvent, _engine: SimulationEngine
     ) -> None:
-        identity = (str(event.payload["message_id"]), str(event.payload["copy_id"]))
-        message = self._messages.get(identity)
-        if message is None or message.is_terminal:
-            return
-        holder = self._nodes[message.last_custody_holder]
-        holder.buffer.expire(event.event_time)
-        self._pending_transfers.pop(identity, None)
+        message_id = str(event.payload["message_id"])
+        holders = {
+            message.last_custody_holder
+            for message in self._messages.values()
+            if message.message_id == message_id and not message.is_terminal
+        }
+        for holder_id in holders:
+            holder = self._nodes[holder_id]
+            holder.buffer.expire(event.event_time)
+            self._schedule_buffer_update(holder, _engine)
+        self._pending_transfers = {
+            pending for pending in self._pending_transfers if pending[0] != message_id
+        }
 
     def _on_contact_started(
         self, event: SimulationEvent, engine: SimulationEngine
@@ -220,9 +234,17 @@ class ScenarioSimulation:
         self._topology.restore_link(node_a, node_b, event.event_time, engine)
 
     def _consider_forwarding(self, holder_id: str, engine: SimulationEngine) -> None:
+        if self._scenario.routing_policy is RoutingPolicy.ADAPTIVE:
+            self._consider_adaptive(holder_id, engine)
+        elif self._scenario.routing_policy is RoutingPolicy.EPIDEMIC:
+            self._consider_epidemic(holder_id, engine)
+        else:
+            self._consider_spray_and_wait(holder_id, engine)
+
+    def _consider_adaptive(self, holder_id: str, engine: SimulationEngine) -> None:
         holder = self._nodes[holder_id]
         for message in sorted(holder.buffer.items(), key=lambda item: item.identity):
-            if message.identity in self._pending_transfers or message.is_terminal:
+            if self._has_pending(message.identity) or self._skip_message(message):
                 continue
             decision = self._router.decide(
                 holder, message, self._nodes, engine.current_time
@@ -244,20 +266,82 @@ class ScenarioSimulation:
             if decision.action is ForwardAction.FORWARD:
                 if decision.to_node is None:
                     raise RuntimeError("forward decision is missing its destination node")
-                self._pending_transfers[message.identity] = (
+                self._schedule_transfer(
+                    message,
                     decision.from_node,
                     decision.to_node,
+                    "custody",
+                    engine,
                 )
-                engine.schedule_after(
-                    self._scenario.transfer_delay_seconds,
-                    EventType.TRANSFER_ATTEMPT,
-                    {
-                        "message_id": message.message_id,
-                        "copy_id": message.copy_id,
-                        "from_node": decision.from_node,
-                        "to_node": decision.to_node,
-                    },
+
+    def _consider_epidemic(self, holder_id: str, engine: SimulationEngine) -> None:
+        holder = self._nodes[holder_id]
+        for message in sorted(holder.buffer.items(), key=lambda item: item.identity):
+            if self._skip_message(message):
+                continue
+            for peer_id in sorted(holder.current_neighbors):
+                peer = self._nodes[peer_id]
+                pending_key = (*message.identity, peer_id)
+                if pending_key in self._pending_transfers or peer.buffer.contains(
+                    message.message_id
+                ):
+                    continue
+                if not peer.buffer.can_accept(message, engine.current_time):
+                    continue
+                self._schedule_baseline_decision(
+                    message, holder_id, peer_id, "epidemic replica", engine
                 )
+                self._schedule_transfer(message, holder_id, peer_id, "replicate", engine)
+
+    def _consider_spray_and_wait(self, holder_id: str, engine: SimulationEngine) -> None:
+        holder = self._nodes[holder_id]
+        for message in sorted(holder.buffer.items(), key=lambda item: item.identity):
+            if self._skip_message(message) or self._has_pending(message.identity):
+                continue
+            budget = self._copy_budgets.get(message.identity, 1)
+            peers = [self._nodes[node_id] for node_id in sorted(holder.current_neighbors)]
+            destination = next(
+                (peer for peer in peers if peer.node_id == message.destination), None
+            )
+            if destination is not None and not destination.buffer.contains(message.message_id):
+                self._schedule_baseline_decision(
+                    message, holder_id, destination.node_id, "destination in contact", engine
+                )
+                self._schedule_transfer(
+                    message, holder_id, destination.node_id, "replicate", engine
+                )
+                continue
+            if budget <= 1:
+                self._schedule_baseline_hold(message, holder_id, "wait phase", engine)
+                continue
+            peer = next(
+                (
+                    candidate
+                    for candidate in peers
+                    if not candidate.buffer.contains(message.message_id)
+                    and candidate.buffer.can_accept(message, engine.current_time)
+                ),
+                None,
+            )
+            if peer is None:
+                self._schedule_baseline_hold(message, holder_id, "no relay can accept copy", engine)
+                continue
+            transfer_budget = budget // 2
+            self._schedule_baseline_decision(
+                message,
+                holder_id,
+                peer.node_id,
+                f"binary spray {transfer_budget} of {budget} copy tokens",
+                engine,
+            )
+            self._schedule_transfer(
+                message,
+                holder_id,
+                peer.node_id,
+                "spray",
+                engine,
+                transfer_budget=transfer_budget,
+            )
 
     def _on_transfer_attempt(
         self, event: SimulationEvent, engine: SimulationEngine
@@ -265,7 +349,10 @@ class ScenarioSimulation:
         identity = (str(event.payload["message_id"]), str(event.payload["copy_id"]))
         from_node_id = str(event.payload["from_node"])
         to_node_id = str(event.payload["to_node"])
-        self._pending_transfers.pop(identity, None)
+        mode = str(event.payload["mode"])
+        retry_count = int(event.payload.get("retry_count", 0))
+        transfer_budget = int(event.payload.get("transfer_budget", 0))
+        pending_key = (*identity, to_node_id)
         message = self._messages.get(identity)
         source = self._nodes[from_node_id]
         receiver = self._nodes[to_node_id]
@@ -277,10 +364,13 @@ class ScenarioSimulation:
             failure_reason = "source no longer holds the message"
         elif not self._topology.is_link_active(from_node_id, to_node_id):
             failure_reason = "contact ended before transfer completion"
+        elif receiver.buffer.contains(message.message_id):
+            failure_reason = "receiver already has this logical message"
         elif not receiver.buffer.can_accept(message, event.event_time):
             failure_reason = "receiver buffer cannot accept the message"
 
         if failure_reason is not None:
+            self._pending_transfers.discard(pending_key)
             self._schedule_transfer_outcome(
                 EventType.TRANSFER_FAILED,
                 identity,
@@ -299,37 +389,290 @@ class ScenarioSimulation:
 
         if message is None:
             raise RuntimeError("active transfer message unexpectedly disappeared")
-        source.buffer.remove(*identity)
-        message.record_hop(from_node_id, to_node_id, event.event_time)
-        receiver.buffer.put(message, event.event_time)
-        self._router.record_transfer(message, from_node_id, to_node_id, event.event_time)
+        self._schedule_link_event(EventType.PACKET_SENT, event.payload, engine)
+        packet_draw = self._channel_draw(
+            "packet",
+            message.message_id,
+            from_node_id,
+            to_node_id,
+            retry_count,
+            event.event_time,
+        )
+        if packet_draw < self._scenario.packet_loss_probability:
+            self._schedule_link_event(EventType.PACKET_LOST, event.payload, engine)
+            self._retry_or_fail(
+                message,
+                from_node_id,
+                to_node_id,
+                mode,
+                retry_count,
+                transfer_budget,
+                engine,
+                "data packet lost",
+            )
+            return
+
+        self._schedule_link_event(EventType.PACKET_RECEIVED, event.payload, engine)
+        self._schedule_link_event(EventType.ACK_SENT, event.payload, engine)
+        ack_draw = self._channel_draw(
+            "ack",
+            message.message_id,
+            from_node_id,
+            to_node_id,
+            retry_count,
+            event.event_time,
+        )
+        if ack_draw < self._scenario.ack_loss_probability:
+            self._schedule_link_event(EventType.ACK_LOST, event.payload, engine)
+            self._retry_or_fail(
+                message,
+                from_node_id,
+                to_node_id,
+                mode,
+                retry_count,
+                transfer_budget,
+                engine,
+                "acknowledgement lost",
+            )
+            return
+
+        self._schedule_link_event(EventType.ACK_RECEIVED, event.payload, engine)
+        self._pending_transfers.discard(pending_key)
+        self._complete_transfer(
+            message,
+            source,
+            receiver,
+            mode,
+            transfer_budget,
+            event.event_time,
+            engine,
+        )
+
+    def _complete_transfer(
+        self,
+        message: Message,
+        source: Node,
+        receiver: Node,
+        mode: str,
+        transfer_budget: int,
+        at_time: float,
+        engine: SimulationEngine,
+    ) -> None:
+        if mode == "custody":
+            source.buffer.remove(*message.identity)
+            self._schedule_buffer_update(source, engine)
+            message.record_hop(source.node_id, receiver.node_id, at_time)
+            receiver.buffer.put(message, at_time)
+            received = message
+            self._router.record_transfer(message, source.node_id, receiver.node_id, at_time)
+        else:
+            received = message.replicate(
+                self._next_copy_id(message.message_id), receiver.node_id, at_time
+            )
+            receiver.buffer.put(received, at_time)
+            self._messages[received.identity] = received
+            if mode == "spray":
+                current_budget = self._copy_budgets.get(message.identity, 1)
+                self._copy_budgets[message.identity] = current_budget - transfer_budget
+                self._copy_budgets[received.identity] = transfer_budget
+            engine.schedule(
+                EventType.ROUTING_COPY_CREATED,
+                {
+                    "message_id": received.message_id,
+                    "copy_id": received.copy_id,
+                    "from_node": source.node_id,
+                    "to_node": receiver.node_id,
+                    "policy": self._scenario.routing_policy.value,
+                },
+            )
+
         source.counters.messages_forwarded += 1
         receiver.counters.messages_received += 1
         self._schedule_transfer_outcome(
             EventType.TRANSFER_COMPLETED,
-            identity,
-            from_node_id,
-            to_node_id,
+            received.identity,
+            source.node_id,
+            receiver.node_id,
             engine,
-            reason="custody transferred after active-contact check",
+            reason="Stop-and-Wait transfer acknowledged",
         )
 
-        if to_node_id == message.destination:
-            receiver.buffer.remove(*identity)
-            message.mark_delivered(event.event_time, to_node_id)
-            receiver.counters.messages_delivered += 1
+        if receiver.node_id == received.destination:
+            receiver.buffer.remove(*received.identity)
+            self._schedule_buffer_update(receiver, engine)
+            received.mark_delivered(at_time, receiver.node_id)
+            if received.message_id not in self._delivered_message_ids:
+                self._delivered_message_ids.add(received.message_id)
+                receiver.counters.messages_delivered += 1
+                engine.schedule(
+                    EventType.MESSAGE_DELIVERED,
+                    {
+                        "message_id": received.message_id,
+                        "copy_id": received.copy_id,
+                        "node_id": receiver.node_id,
+                        "delay_seconds": at_time - received.creation_time,
+                        "hop_count": received.hop_count,
+                        "size_bytes": received.size_bytes,
+                    },
+                )
+        else:
+            self._schedule_buffered_event(received, receiver, engine)
+
+    def _retry_or_fail(
+        self,
+        message: Message,
+        from_node: str,
+        to_node: str,
+        mode: str,
+        retry_count: int,
+        transfer_budget: int,
+        engine: SimulationEngine,
+        reason: str,
+    ) -> None:
+        next_attempt_time = engine.current_time + self._scenario.ack_timeout_seconds
+        deadline = min(message.expires_at, self._scenario.duration_seconds)
+        if retry_count < self._scenario.max_link_retries and next_attempt_time < deadline:
             engine.schedule(
-                EventType.MESSAGE_DELIVERED,
+                EventType.RETRANSMISSION,
                 {
                     "message_id": message.message_id,
                     "copy_id": message.copy_id,
-                    "node_id": to_node_id,
-                    "delay_seconds": event.event_time - message.creation_time,
-                    "hop_count": message.hop_count,
+                    "from_node": from_node,
+                    "to_node": to_node,
+                    "retry_count": retry_count + 1,
+                    "reason": reason,
                 },
             )
-        else:
-            self._schedule_buffered_event(message, receiver, engine)
+            engine.schedule_after(
+                self._scenario.ack_timeout_seconds,
+                EventType.TRANSFER_ATTEMPT,
+                {
+                    "message_id": message.message_id,
+                    "copy_id": message.copy_id,
+                    "from_node": from_node,
+                    "to_node": to_node,
+                    "mode": mode,
+                    "retry_count": retry_count + 1,
+                    "transfer_budget": transfer_budget,
+                },
+            )
+            return
+
+        self._pending_transfers.discard((*message.identity, to_node))
+        self._schedule_transfer_outcome(
+            EventType.TRANSFER_FAILED,
+            message.identity,
+            from_node,
+            to_node,
+            engine,
+            reason=f"{reason}; retry limit or deadline reached",
+        )
+
+    def _schedule_transfer(
+        self,
+        message: Message,
+        from_node: str,
+        to_node: str,
+        mode: str,
+        engine: SimulationEngine,
+        *,
+        transfer_budget: int = 0,
+    ) -> None:
+        completion_time = engine.current_time + self._scenario.transfer_delay_seconds
+        deadline = min(message.expires_at, self._scenario.duration_seconds)
+        if completion_time >= deadline:
+            self._schedule_transfer_outcome(
+                EventType.TRANSFER_FAILED,
+                message.identity,
+                from_node,
+                to_node,
+                engine,
+                reason="insufficient time before message or simulation deadline",
+            )
+            return
+        pending_key = (*message.identity, to_node)
+        self._pending_transfers.add(pending_key)
+        engine.schedule_after(
+            self._scenario.transfer_delay_seconds,
+            EventType.TRANSFER_ATTEMPT,
+            {
+                "message_id": message.message_id,
+                "copy_id": message.copy_id,
+                "from_node": from_node,
+                "to_node": to_node,
+                "mode": mode,
+                "retry_count": 0,
+                "transfer_budget": transfer_budget,
+            },
+        )
+
+    def _has_pending(self, identity: tuple[str, str]) -> bool:
+        return any(pending[:2] == identity for pending in self._pending_transfers)
+
+    def _skip_message(self, message: Message) -> bool:
+        return message.is_terminal or message.message_id in self._delivered_message_ids
+
+    def _next_copy_id(self, message_id: str) -> str:
+        self._copy_sequence += 1
+        return f"{message_id}-copy-{self._copy_sequence:04d}"
+
+    def _channel_draw(
+        self,
+        outcome: str,
+        message_id: str,
+        from_node: str,
+        to_node: str,
+        retry_count: int,
+        at_time: float,
+    ) -> float:
+        """Return a policy-independent deterministic channel outcome."""
+
+        channel_seed = (
+            f"{self._scenario.seed}:{outcome}:{message_id}:{from_node}:"
+            f"{to_node}:{retry_count}:{at_time:.9f}"
+        )
+        return random.Random(channel_seed).random()
+
+    def _schedule_baseline_decision(
+        self,
+        message: Message,
+        from_node: str,
+        to_node: str,
+        reason: str,
+        engine: SimulationEngine,
+    ) -> None:
+        self._schedule_decision(
+            ForwardDecision(
+                action=ForwardAction.FORWARD,
+                from_node=from_node,
+                to_node=to_node,
+                message_id=message.message_id,
+                copy_id=message.copy_id,
+                reason=reason,
+            ),
+            engine,
+        )
+
+    def _schedule_baseline_hold(
+        self, message: Message, holder_id: str, reason: str, engine: SimulationEngine
+    ) -> None:
+        self._schedule_decision(
+            ForwardDecision(
+                action=ForwardAction.HOLD,
+                from_node=holder_id,
+                to_node=None,
+                message_id=message.message_id,
+                copy_id=message.copy_id,
+                reason=reason,
+            ),
+            engine,
+        )
+
+    @staticmethod
+    def _schedule_link_event(
+        event_type: EventType, payload: Mapping[str, object], engine: SimulationEngine
+    ) -> None:
+        engine.schedule(event_type, dict(payload))
 
     @staticmethod
     def _schedule_decision(decision: ForwardDecision, engine: SimulationEngine) -> None:
@@ -356,6 +699,17 @@ class ScenarioSimulation:
             {
                 "message_id": message.message_id,
                 "copy_id": message.copy_id,
+                "node_id": node.node_id,
+                "used_bytes": node.buffer.used_bytes,
+                "free_bytes": node.buffer.free_bytes,
+            },
+        )
+
+    @staticmethod
+    def _schedule_buffer_update(node: Node, engine: SimulationEngine) -> None:
+        engine.schedule(
+            EventType.BUFFER_UPDATED,
+            {
                 "node_id": node.node_id,
                 "used_bytes": node.buffer.used_bytes,
                 "free_bytes": node.buffer.free_bytes,

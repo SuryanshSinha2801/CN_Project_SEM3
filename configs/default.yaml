@@ -9,6 +9,9 @@ area:
 
 routing_policy: adaptive
 packet_loss_probability: 0.05
+ack_loss_probability: 0.02
+max_link_retries: 3
+ack_timeout_seconds: 1
 transfer_delay_seconds: 1
 spray_copy_budget: 4
 
