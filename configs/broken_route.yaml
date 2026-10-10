@@ -5,6 +5,7 @@ duration_seconds: 15
 area: {width: 1200, height: 700}
 routing_policy: adaptive
 packet_loss_probability: 0
+transfer_delay_seconds: 1
 spray_copy_budget: 4
 adaptive_weights:
   connectivity: 0.35
@@ -23,4 +24,3 @@ messages:
   - {message_id: demo, source: A, destination: D, size_bytes: 1024, creation_time: 0, ttl_seconds: 15}
 forced_link_failures:
   - {node_a: B, node_b: C, start_time: 2, end_time: 15}
-

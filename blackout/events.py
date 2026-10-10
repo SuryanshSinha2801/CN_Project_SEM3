@@ -20,7 +20,9 @@ class EventType(StrEnum):
     MESSAGE_BUFFERED = "message_buffered"
     MESSAGE_EXPIRED = "message_expired"
     FORWARD_DECISION = "forward_decision"
+    TRANSFER_ATTEMPT = "transfer_attempt"
     TRANSFER_COMPLETED = "transfer_completed"
+    TRANSFER_FAILED = "transfer_failed"
     MESSAGE_DELIVERED = "message_delivered"
     SIMULATION_ENDED = "simulation_ended"
 

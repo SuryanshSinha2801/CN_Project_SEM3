@@ -30,12 +30,16 @@ def test_message_created_is_buffered_at_source_and_emits_event() -> None:
     event_types = [event.event_type for event in processed]
     assert event_types[:2] == [EventType.SIMULATION_STARTED, EventType.MESSAGE_CREATED]
     assert event_types.count(EventType.CONTACT_STARTED) == 3
-    assert event_types[-1] is EventType.MESSAGE_BUFFERED
+    assert EventType.MESSAGE_BUFFERED in event_types
+    assert event_types[-1] is EventType.FORWARD_DECISION
     assert message.state is MessageState.BUFFERED
     assert message.last_custody_holder == "A"
     assert simulation.nodes["A"].buffer.get("demo") is message
     assert simulation.nodes["A"].buffer.used_bytes == 1024
-    assert processed[-1].payload["free_bytes"] == 7168
+    buffered = next(
+        event for event in processed if event.event_type is EventType.MESSAGE_BUFFERED
+    )
+    assert buffered.payload["free_bytes"] == 7168
 
 
 def test_ttl_event_expires_message_and_reclaims_source_buffer() -> None:

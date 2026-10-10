@@ -98,6 +98,7 @@ class ScenarioConfig(StrictModel):
     area: AreaConfig = AreaConfig()
     routing_policy: RoutingPolicy = RoutingPolicy.ADAPTIVE
     packet_loss_probability: Probability = 0
+    transfer_delay_seconds: PositiveFloat = 1
     spray_copy_budget: PositiveInt = 4
     adaptive_weights: AdaptiveWeights = AdaptiveWeights()
     nodes: tuple[NodeConfig, ...] = Field(min_length=2)

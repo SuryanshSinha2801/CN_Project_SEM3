@@ -9,6 +9,7 @@ area:
 
 routing_policy: adaptive
 packet_loss_probability: 0.05
+transfer_delay_seconds: 1
 spray_copy_budget: 4
 
 adaptive_weights:
@@ -57,4 +58,3 @@ forced_link_failures:
     node_b: C
     start_time: 2
     end_time: 120
-

@@ -9,6 +9,7 @@ from typing import Mapping
 from blackout.config import MessageConfig, ScenarioConfig
 from blackout.events import EventType, SimulationEvent
 from blackout.models import Message, MessageState, Node, NodeState, Position
+from blackout.routing import ForwardAction, ForwardDecision, GreedySingleCopyRouter
 from blackout.simulation.engine import SimulationEngine
 from blackout.simulation.scenario import schedule_scenario
 from blackout.simulation.topology import Link, TopologyManager
@@ -57,6 +58,8 @@ class ScenarioSimulation:
         self._message_configs = {message.message_id: message for message in scenario.messages}
         self._nodes: dict[str, Node] = {}
         self._messages: dict[tuple[str, str], Message] = {}
+        self._pending_transfers: dict[tuple[str, str], tuple[str, str]] = {}
+        self._router = GreedySingleCopyRouter()
         self._topology: TopologyManager = TopologyManager({})
         self._engine = SimulationEngine(seed=scenario.seed)
         self.reset()
@@ -101,6 +104,7 @@ class ScenarioSimulation:
             for config in self._scenario.nodes
         }
         self._messages = {}
+        self._pending_transfers = {}
         initially_blocked = (
             (failure.node_a, failure.node_b)
             for failure in self._scenario.forced_link_failures
@@ -110,7 +114,10 @@ class ScenarioSimulation:
         self._engine = schedule_scenario(self._scenario)
         self._engine.register_handler(EventType.SIMULATION_STARTED, self._on_simulation_started)
         self._engine.register_handler(EventType.MESSAGE_CREATED, self._on_message_created)
+        self._engine.register_handler(EventType.MESSAGE_BUFFERED, self._on_message_buffered)
         self._engine.register_handler(EventType.MESSAGE_EXPIRED, self._on_message_expired)
+        self._engine.register_handler(EventType.CONTACT_STARTED, self._on_contact_started)
+        self._engine.register_handler(EventType.TRANSFER_ATTEMPT, self._on_transfer_attempt)
         self._engine.register_handler(EventType.NODE_MOVED, self._on_node_moved)
         self._engine.register_handler(EventType.LINK_FAILED, self._on_link_failed)
         self._engine.register_handler(EventType.LINK_RESTORED, self._on_link_restored)
@@ -163,16 +170,12 @@ class ScenarioSimulation:
         source.buffer.put(message, event.event_time)
         source.counters.messages_generated += 1
         self._messages[message.identity] = message
-        engine.schedule(
-            EventType.MESSAGE_BUFFERED,
-            {
-                "message_id": message.message_id,
-                "copy_id": message.copy_id,
-                "node_id": source.node_id,
-                "used_bytes": source.buffer.used_bytes,
-                "free_bytes": source.buffer.free_bytes,
-            },
-        )
+        self._schedule_buffered_event(message, source, engine)
+
+    def _on_message_buffered(
+        self, event: SimulationEvent, engine: SimulationEngine
+    ) -> None:
+        self._consider_forwarding(str(event.payload["node_id"]), engine)
 
     def _on_message_expired(
         self, event: SimulationEvent, _engine: SimulationEngine
@@ -183,6 +186,13 @@ class ScenarioSimulation:
             return
         holder = self._nodes[message.last_custody_holder]
         holder.buffer.expire(event.event_time)
+        self._pending_transfers.pop(identity, None)
+
+    def _on_contact_started(
+        self, event: SimulationEvent, engine: SimulationEngine
+    ) -> None:
+        self._consider_forwarding(str(event.payload["node_a"]), engine)
+        self._consider_forwarding(str(event.payload["node_b"]), engine)
 
     def _on_node_moved(self, event: SimulationEvent, engine: SimulationEngine) -> None:
         node_id = str(event.payload["node_id"])
@@ -207,6 +217,165 @@ class ScenarioSimulation:
             self._topology.clear_failure(node_a, node_b)
             return
         self._topology.restore_link(node_a, node_b, event.event_time, engine)
+
+    def _consider_forwarding(self, holder_id: str, engine: SimulationEngine) -> None:
+        holder = self._nodes[holder_id]
+        for message in sorted(holder.buffer.items(), key=lambda item: item.identity):
+            if message.identity in self._pending_transfers or message.is_terminal:
+                continue
+            decision = self._router.decide(
+                holder, message, self._nodes, engine.current_time
+            )
+            completion_time = engine.current_time + self._scenario.transfer_delay_seconds
+            deadline = min(message.expires_at, self._scenario.duration_seconds)
+            if decision.action is ForwardAction.FORWARD and completion_time >= deadline:
+                decision = ForwardDecision(
+                    action=ForwardAction.HOLD,
+                    from_node=holder.node_id,
+                    to_node=None,
+                    message_id=message.message_id,
+                    copy_id=message.copy_id,
+                    reason="insufficient time before message or simulation deadline",
+                    score_components=decision.score_components,
+                    total_score=decision.total_score,
+                )
+            self._schedule_decision(decision, engine)
+            if decision.action is ForwardAction.FORWARD:
+                if decision.to_node is None:
+                    raise RuntimeError("forward decision is missing its destination node")
+                self._pending_transfers[message.identity] = (
+                    decision.from_node,
+                    decision.to_node,
+                )
+                engine.schedule_after(
+                    self._scenario.transfer_delay_seconds,
+                    EventType.TRANSFER_ATTEMPT,
+                    {
+                        "message_id": message.message_id,
+                        "copy_id": message.copy_id,
+                        "from_node": decision.from_node,
+                        "to_node": decision.to_node,
+                    },
+                )
+
+    def _on_transfer_attempt(
+        self, event: SimulationEvent, engine: SimulationEngine
+    ) -> None:
+        identity = (str(event.payload["message_id"]), str(event.payload["copy_id"]))
+        from_node_id = str(event.payload["from_node"])
+        to_node_id = str(event.payload["to_node"])
+        self._pending_transfers.pop(identity, None)
+        message = self._messages.get(identity)
+        source = self._nodes[from_node_id]
+        receiver = self._nodes[to_node_id]
+
+        failure_reason: str | None = None
+        if message is None or message.is_terminal:
+            failure_reason = "message is no longer active"
+        elif not source.buffer.contains(*identity):
+            failure_reason = "source no longer holds the message"
+        elif not self._topology.is_link_active(from_node_id, to_node_id):
+            failure_reason = "contact ended before transfer completion"
+        elif not receiver.buffer.can_accept(message, event.event_time):
+            failure_reason = "receiver buffer cannot accept the message"
+
+        if failure_reason is not None:
+            self._schedule_transfer_outcome(
+                EventType.TRANSFER_FAILED,
+                identity,
+                from_node_id,
+                to_node_id,
+                engine,
+                reason=failure_reason,
+            )
+            if message is not None and not message.is_terminal and source.buffer.contains(*identity):
+                self._consider_forwarding(from_node_id, engine)
+            return
+
+        if message is None:
+            raise RuntimeError("active transfer message unexpectedly disappeared")
+        source.buffer.remove(*identity)
+        message.record_hop(from_node_id, to_node_id, event.event_time)
+        receiver.buffer.put(message, event.event_time)
+        source.counters.messages_forwarded += 1
+        receiver.counters.messages_received += 1
+        self._schedule_transfer_outcome(
+            EventType.TRANSFER_COMPLETED,
+            identity,
+            from_node_id,
+            to_node_id,
+            engine,
+            reason="custody transferred after active-contact check",
+        )
+
+        if to_node_id == message.destination:
+            receiver.buffer.remove(*identity)
+            message.mark_delivered(event.event_time, to_node_id)
+            receiver.counters.messages_delivered += 1
+            engine.schedule(
+                EventType.MESSAGE_DELIVERED,
+                {
+                    "message_id": message.message_id,
+                    "copy_id": message.copy_id,
+                    "node_id": to_node_id,
+                    "delay_seconds": event.event_time - message.creation_time,
+                    "hop_count": message.hop_count,
+                },
+            )
+        else:
+            self._schedule_buffered_event(message, receiver, engine)
+
+    @staticmethod
+    def _schedule_decision(decision: ForwardDecision, engine: SimulationEngine) -> None:
+        engine.schedule(
+            EventType.FORWARD_DECISION,
+            {
+                "action": decision.action.value,
+                "from_node": decision.from_node,
+                "to_node": decision.to_node,
+                "message_id": decision.message_id,
+                "copy_id": decision.copy_id,
+                "reason": decision.reason,
+                "score_components": dict(decision.score_components),
+                "total_score": decision.total_score,
+            },
+        )
+
+    @staticmethod
+    def _schedule_buffered_event(
+        message: Message, node: Node, engine: SimulationEngine
+    ) -> None:
+        engine.schedule(
+            EventType.MESSAGE_BUFFERED,
+            {
+                "message_id": message.message_id,
+                "copy_id": message.copy_id,
+                "node_id": node.node_id,
+                "used_bytes": node.buffer.used_bytes,
+                "free_bytes": node.buffer.free_bytes,
+            },
+        )
+
+    @staticmethod
+    def _schedule_transfer_outcome(
+        event_type: EventType,
+        identity: tuple[str, str],
+        from_node: str,
+        to_node: str,
+        engine: SimulationEngine,
+        *,
+        reason: str,
+    ) -> None:
+        engine.schedule(
+            event_type,
+            {
+                "message_id": identity[0],
+                "copy_id": identity[1],
+                "from_node": from_node,
+                "to_node": to_node,
+                "reason": reason,
+            },
+        )
 
     @staticmethod
     def _make_message(config: MessageConfig) -> Message:
