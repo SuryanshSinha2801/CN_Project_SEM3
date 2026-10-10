@@ -4,7 +4,7 @@ BLACKOUT is a Python-based educational simulator for studying communication in i
 
 ## Project status
 
-The project has entered implementation. The repository now contains the approved modular design, validated YAML scenarios, a deterministic event engine, core domain models, range-based contacts, and failure-safe single-copy store-carry-forward routing. The next milestone is implementing the full weighted BLACKOUT Adaptive policy and routing baselines.
+The project has entered implementation. The repository now contains the approved modular design, validated YAML scenarios, a deterministic event engine, core domain models, range-based contacts, the full weighted BLACKOUT Adaptive policy, and a Tkinter presentation GUI. The next milestone is implementing the Epidemic and Binary Spray-and-Wait baselines.
 
 ## Planned capabilities
 
@@ -36,7 +36,8 @@ See [BLACKOUT_ARCHITECTURE.md](BLACKOUT_ARCHITECTURE.md) for:
 ## Technology stack
 
 - CPython 3.13
-- Pygame Community Edition
+- Tkinter (included with the standard Python Windows installation) for the current GUI
+- Pygame Community Edition for the planned advanced animated interface
 - PyYAML and Pydantic
 - NumPy, Pandas, and Matplotlib
 - Rich
@@ -69,7 +70,37 @@ Validate the supplied scenarios:
 ```powershell
 python -m blackout validate configs/default.yaml
 python -m blackout validate configs/broken_route.yaml
+python -m blackout validate configs/presentation.yaml
 ```
+
+## Run the presentation GUI
+
+Tkinter is included with the installed Python 3.13 runtime, so the basic GUI needs no
+additional package. Start the prepared professor demonstration from the repository root:
+
+```powershell
+python -m blackout gui
+```
+
+Or open another scenario explicitly:
+
+```powershell
+python -m blackout gui configs/broken_route.yaml
+```
+
+Use **Step Event** to explain the event queue one event at a time, or **Play** to animate
+the complete deterministic trace. In the prepared presentation scenario:
+
+1. The message starts at A and custody moves to B.
+2. The B-C link fails before that transfer can complete, so B safely retains the message.
+3. E moves into range at simulated time 6 and passes the Adaptive score threshold.
+4. F appears at time 8 and becomes the next custodian.
+5. F contacts destination D at time 10; delivery completes at time 11.
+
+The right panel shows every event and the latest Adaptive decision, including normalized
+connectivity (C), proximity (P), buffer availability (B), node state (S), total scores,
+and the hysteresis threshold. Green lines are active contacts, dashed red lines are forced
+failures, and the gold ring identifies the current message custodian.
 
 Run the automated tests:
 
@@ -98,6 +129,9 @@ python -m pytest
 - `blackout/simulation/runtime.py` - configured nodes, message lifecycle handlers, and snapshots
 - `blackout/simulation/topology.py` - range contacts, movement reconciliation, and failures
 - `blackout/routing/single_copy.py` - explainable greedy custody forwarding
+- `blackout/routing/adaptive.py` - weighted Adaptive score, hysteresis, and cooldown
+- `blackout/gui.py` - Tkinter presentation and event-trace interface
+- `configs/presentation.yaml` - scripted successful alternate-route demonstration
 - `blackout/models/message.py` - immutable message identity, TTL, hops, and lifecycle
 - `blackout/models/buffer.py` - byte-capacity storage, duplicate checks, and expiry
 - `blackout/models/node.py` - node position, state, contacts, counters, and local buffer

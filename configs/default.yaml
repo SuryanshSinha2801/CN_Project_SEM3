@@ -19,6 +19,10 @@ adaptive_weights:
   node_state: 0.10
   minimum_improvement: 0.05
 
+adaptive_contact_window_seconds: 30
+adaptive_contact_saturation: 3
+adaptive_edge_cooldown_seconds: 2
+
 nodes:
   - node_id: A
     position: {x: 100, y: 350}

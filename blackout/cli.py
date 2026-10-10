@@ -18,6 +18,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = subparsers.add_parser("validate", help="validate and summarize a scenario")
     validate.add_argument("scenario", type=Path, help="path to a YAML scenario")
+
+    gui = subparsers.add_parser("gui", help="open the Tkinter simulation demonstrator")
+    gui.add_argument(
+        "scenario",
+        type=Path,
+        nargs="?",
+        default=Path("configs/presentation.yaml"),
+        help="scenario YAML (default: configs/presentation.yaml)",
+    )
     return parser
 
 
@@ -36,6 +45,7 @@ def validate_command(path: Path, console: Console) -> int:
     table.add_row("Duration", f"{scenario.duration_seconds:g} simulated seconds")
     table.add_row("Nodes", str(len(scenario.nodes)))
     table.add_row("Messages", str(len(scenario.messages)))
+    table.add_row("Scripted movements", str(len(scenario.movements)))
     table.add_row("Routing policy", scenario.routing_policy.value)
     table.add_row("Forced failures", str(len(scenario.forced_link_failures)))
     console.print(table)
@@ -47,5 +57,9 @@ def main(argv: list[str] | None = None) -> int:
     console = Console()
     if args.command == "validate":
         return validate_command(args.scenario, console)
-    return 2
+    if args.command == "gui":
+        from blackout.gui import launch_gui
 
+        launch_gui(args.scenario)
+        return 0
+    return 2

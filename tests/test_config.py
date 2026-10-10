@@ -26,6 +26,13 @@ def test_broken_route_scenario_is_deterministic() -> None:
     assert first.forced_link_failures[0].node_b == "C"
 
 
+def test_presentation_scenario_has_scripted_alternate_route() -> None:
+    scenario = load_scenario(PROJECT_ROOT / "configs" / "presentation.yaml")
+
+    assert [movement.node_id for movement in scenario.movements] == ["E", "F", "F"]
+    assert [movement.time for movement in scenario.movements] == [6, 8, 10]
+
+
 def test_duplicate_node_ids_are_rejected() -> None:
     raw = {
         "name": "invalid-duplicate-nodes",

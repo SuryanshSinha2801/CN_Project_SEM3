@@ -32,6 +32,11 @@
 # 1. LIVE 2D SIMULATOR AND USER INTERFACE
 # -----------------------------------------------------------------------------
 
+# The current presentation GUI uses Tkinter, which ships with the standard
+# CPython Windows installer and therefore has no pip requirement. Verify it with:
+#
+#     python -c "import tkinter; print(tkinter.TkVersion)"
+
 # Pygame Community Edition provides the real-time 2D window, drawing primitives,
 # fonts, animation clock, keyboard/mouse input, buttons, and screenshots.
 #

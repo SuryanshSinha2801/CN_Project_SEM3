@@ -9,7 +9,7 @@ from typing import Mapping
 from blackout.config import MessageConfig, ScenarioConfig
 from blackout.events import EventType, SimulationEvent
 from blackout.models import Message, MessageState, Node, NodeState, Position
-from blackout.routing import ForwardAction, ForwardDecision, GreedySingleCopyRouter
+from blackout.routing import AdaptiveRouter, ForwardAction, ForwardDecision
 from blackout.simulation.engine import SimulationEngine
 from blackout.simulation.scenario import schedule_scenario
 from blackout.simulation.topology import Link, TopologyManager
@@ -59,7 +59,7 @@ class ScenarioSimulation:
         self._nodes: dict[str, Node] = {}
         self._messages: dict[tuple[str, str], Message] = {}
         self._pending_transfers: dict[tuple[str, str], tuple[str, str]] = {}
-        self._router = GreedySingleCopyRouter()
+        self._router = self._build_router()
         self._topology: TopologyManager = TopologyManager({})
         self._engine = SimulationEngine(seed=scenario.seed)
         self.reset()
@@ -105,6 +105,7 @@ class ScenarioSimulation:
         }
         self._messages = {}
         self._pending_transfers = {}
+        self._router = self._build_router()
         initially_blocked = (
             (failure.node_a, failure.node_b)
             for failure in self._scenario.forced_link_failures
@@ -288,7 +289,11 @@ class ScenarioSimulation:
                 engine,
                 reason=failure_reason,
             )
-            if message is not None and not message.is_terminal and source.buffer.contains(*identity):
+            if (
+                message is not None
+                and not message.is_terminal
+                and source.buffer.contains(*identity)
+            ):
                 self._consider_forwarding(from_node_id, engine)
             return
 
@@ -297,6 +302,7 @@ class ScenarioSimulation:
         source.buffer.remove(*identity)
         message.record_hop(from_node_id, to_node_id, event.event_time)
         receiver.buffer.put(message, event.event_time)
+        self._router.record_transfer(message, from_node_id, to_node_id, event.event_time)
         source.counters.messages_forwarded += 1
         receiver.counters.messages_received += 1
         self._schedule_transfer_outcome(
@@ -387,6 +393,16 @@ class ScenarioSimulation:
             creation_time=config.creation_time,
             size_bytes=config.size_bytes,
             ttl_seconds=config.ttl_seconds,
+        )
+
+    def _build_router(self) -> AdaptiveRouter:
+        return AdaptiveRouter(
+            self._scenario.adaptive_weights,
+            area_width=self._scenario.area.width,
+            area_height=self._scenario.area.height,
+            contact_window_seconds=self._scenario.adaptive_contact_window_seconds,
+            contact_saturation=self._scenario.adaptive_contact_saturation,
+            edge_cooldown_seconds=self._scenario.adaptive_edge_cooldown_seconds,
         )
 
 

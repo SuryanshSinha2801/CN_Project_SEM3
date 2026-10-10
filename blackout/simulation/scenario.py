@@ -34,6 +34,17 @@ def schedule_scenario(scenario: ScenarioConfig) -> SimulationEngine:
         if expiry_time <= scenario.duration_seconds:
             engine.schedule_at(expiry_time, EventType.MESSAGE_EXPIRED, identity)
 
+    for movement in scenario.movements:
+        engine.schedule_at(
+            movement.time,
+            EventType.NODE_MOVED,
+            {
+                "node_id": movement.node_id,
+                "x": movement.position.x,
+                "y": movement.position.y,
+            },
+        )
+
     for failure in scenario.forced_link_failures:
         link = {"node_a": failure.node_a, "node_b": failure.node_b}
         engine.schedule_at(failure.start_time, EventType.LINK_FAILED, link)

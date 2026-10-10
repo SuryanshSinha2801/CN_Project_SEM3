@@ -75,6 +75,12 @@ class LinkFailureConfig(StrictModel):
         return self
 
 
+class NodeMovementConfig(StrictModel):
+    node_id: str
+    time: NonNegativeFloat
+    position: PositionConfig
+
+
 class AdaptiveWeights(StrictModel):
     connectivity: Probability = 0.35
     proximity: Probability = 0.35
@@ -101,8 +107,12 @@ class ScenarioConfig(StrictModel):
     transfer_delay_seconds: PositiveFloat = 1
     spray_copy_budget: PositiveInt = 4
     adaptive_weights: AdaptiveWeights = AdaptiveWeights()
+    adaptive_contact_window_seconds: PositiveFloat = 30
+    adaptive_contact_saturation: PositiveInt = 3
+    adaptive_edge_cooldown_seconds: NonNegativeFloat = 2
     nodes: tuple[NodeConfig, ...] = Field(min_length=2)
     messages: tuple[MessageConfig, ...] = Field(min_length=1)
+    movements: tuple[NodeMovementConfig, ...] = ()
     forced_link_failures: tuple[LinkFailureConfig, ...] = ()
 
     @model_validator(mode="after")
@@ -135,6 +145,22 @@ class ScenarioConfig(StrictModel):
                 raise ValueError(
                     f"message {message.message_id!r} exceeds source buffer capacity"
                 )
+
+        movement_keys: set[tuple[str, float]] = set()
+        for movement in self.movements:
+            if movement.node_id not in known_nodes:
+                raise ValueError("movement references an unknown node")
+            if movement.time >= self.duration_seconds:
+                raise ValueError("movement occurs after the simulation ends")
+            if (
+                movement.position.x > self.area.width
+                or movement.position.y > self.area.height
+            ):
+                raise ValueError(f"movement for {movement.node_id!r} leaves the simulation area")
+            movement_key = (movement.node_id, movement.time)
+            if movement_key in movement_keys:
+                raise ValueError("a node cannot have two movements at the same time")
+            movement_keys.add(movement_key)
 
         for failure in self.forced_link_failures:
             if failure.node_a not in known_nodes or failure.node_b not in known_nodes:
