@@ -1,0 +1,182 @@
+# =============================================================================
+# BLACKOUT - Adaptive Network Simulation
+# Reproducible Python dependency set
+# =============================================================================
+#
+# Supported interpreter:
+#   CPython 3.14.x, 64-bit
+#
+# Recommended Windows setup (PowerShell):
+#   py -3.14 -m venv .venv
+#   .\.venv\Scripts\Activate.ps1
+#   python -m pip install --upgrade pip
+#   python -m pip install -r requirement.txt
+#
+# Verify the environment:
+#   python --version
+#   python -c "import pygame, numpy, pandas, matplotlib, yaml, pydantic; print('BLACKOUT dependencies OK')"
+#   pytest --version
+#   ruff --version
+#
+# All direct dependencies are exactly pinned so every team member starts with
+# the same versions. pip will install their required transitive dependencies.
+# Do not manually add transitive packages unless BLACKOUT imports them directly.
+#
+# This file intentionally includes both runtime and development dependencies.
+# That makes a single install command sufficient for implementation, testing,
+# experiment execution, plotting, and code-quality checks.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1. LIVE 2D SIMULATOR AND USER INTERFACE
+# -----------------------------------------------------------------------------
+
+# Pygame Community Edition provides the real-time 2D window, drawing primitives,
+# fonts, animation clock, keyboard/mouse input, buttons, and screenshots.
+#
+# Important: the installed distribution is named "pygame-ce", but application
+# code imports it as:
+#
+#     import pygame
+#
+# The simulation engine must use its own simulated clock. Pygame's Clock is only
+# for display frame-rate control and must never determine experimental results.
+pygame-ce==2.5.8
+
+
+# -----------------------------------------------------------------------------
+# 2. SCENARIO CONFIGURATION AND VALIDATION
+# -----------------------------------------------------------------------------
+
+# Human-readable YAML configuration for nodes, positions, communication ranges,
+# mobility, failures, packet-loss rates, routing policy, random seed, adaptive
+# weights, copy budget, buffer capacity, message schedule, and run duration.
+# Always load project-owned or trusted YAML with yaml.safe_load().
+PyYAML==6.0.3
+
+# Validates YAML configuration after loading. Pydantic models should reject bad
+# weights, negative ranges, impossible probabilities, duplicate node IDs, and
+# invalid buffer/message sizes before the simulation starts.
+pydantic==2.13.5
+
+
+# -----------------------------------------------------------------------------
+# 3. NUMERICAL WORK AND REPRODUCIBLE EXPERIMENTS
+# -----------------------------------------------------------------------------
+
+# Numeric arrays, seeded random generators, vectorized distance calculations,
+# descriptive statistics, bootstrap/confidence calculations, and trace data.
+# Use numpy.random.Generator created from a recorded seed; do not use unseeded
+# module-level randomness in experiments.
+numpy==2.5.3
+
+# Tabular storage and processing for event logs, per-run summaries, CSV export,
+# aggregation across seeds, and routing-strategy comparison tables.
+# The live engine should emit ordinary events; Pandas belongs in the experiment
+# and reporting layer, not inside the per-frame/per-event routing hot path.
+pandas==3.0.6
+
+# Static result figures: delivery ratio, delay, routing overhead, message copies,
+# retransmissions, throughput, buffer utilization, and confidence intervals.
+# Pygame remains responsible for the live topology; Matplotlib is for reports.
+matplotlib==3.11.2
+
+
+# -----------------------------------------------------------------------------
+# 4. TERMINAL OUTPUT AND DIAGNOSTICS
+# -----------------------------------------------------------------------------
+
+# Readable command-line tables, colored event summaries, progress displays for
+# batch experiments, validation errors, and final metric summaries.
+# Rich output is for humans; machine-readable results must still use CSV/JSON.
+rich==15.0.0
+
+
+# -----------------------------------------------------------------------------
+# 5. AUTOMATED TESTING
+# -----------------------------------------------------------------------------
+
+# Unit and integration test runner. Tests should cover buffer behavior, message
+# expiry, duplicate suppression, event ordering, all routing policies, adaptive
+# score components, contact termination, ACK loss, retransmission, and metrics.
+pytest==9.1.1
+
+# Coverage reporting for the core engine and algorithms. UI drawing code does
+# not need the same coverage target as routing, buffering, and metric definitions.
+# Suggested command:
+#   pytest --cov=blackout --cov-report=term-missing --cov-report=html
+pytest-cov==7.1.0
+
+# Property-based testing for invariants across many generated cases. Examples:
+# buffer use never exceeds capacity; copy budgets never become negative; one
+# adaptive custody copy exists after a successful transfer; a delivered message
+# is recorded once; identical seeds produce identical event traces.
+hypothesis==6.168.5
+
+
+# -----------------------------------------------------------------------------
+# 6. CODE QUALITY AND STATIC CHECKING
+# -----------------------------------------------------------------------------
+
+# Fast formatter and linter. It should enforce imports, common correctness rules,
+# naming consistency, and formatting across the repository.
+# Suggested commands:
+#   ruff format .
+#   ruff check .
+ruff==0.16.8
+
+# Static type checking for event payloads, routing interfaces, model identifiers,
+# optional values, and metric records. Type checking is especially useful here
+# because many modules exchange similarly shaped simulation objects.
+# Suggested command:
+#   mypy blackout tests
+mypy==2.4.0
+
+# Type information for PyYAML so mypy can check configuration-loading code.
+types-PyYAML==6.0.12.20260906
+
+
+# =============================================================================
+# FEATURES THAT REQUIRE NO THIRD-PARTY PACKAGE
+# =============================================================================
+#
+# Implement the following with Python's standard library or project code:
+#
+# - Discrete-event queue: heapq
+# - Domain models: dataclasses, enum, typing
+# - Deterministic IDs: uuid or project-controlled counters
+# - CSV and JSON event export: csv, json
+# - Message hashing and checks: hashlib, zlib where appropriate
+# - TCP/UDP demonstration: socket
+# - Timing in the optional socket demo: time
+# - Main logging backend: logging
+# - Configuration paths: pathlib
+# - Command-line arguments: argparse
+# - Statistics not requiring array operations: statistics
+# - Event serialization: dataclasses.asdict plus json
+#
+# Implement CRC/Hamming, Stop-and-Wait, Sliding Window, ACK handling, adaptive
+# RTO, Epidemic Routing, Binary Spray-and-Wait, and BLACKOUT Adaptive Routing in
+# the repository. They are learning outcomes and should not be replaced by opaque
+# packages.
+#
+# =============================================================================
+# DELIBERATELY EXCLUDED FROM THE CORE DEPENDENCIES
+# =============================================================================
+#
+# - SimPy: the project should implement its small event queue so the team can
+#   explain event ordering and simulated time during the viva.
+# - NetworkX: contacts and forwarding decisions are temporal and must not be
+#   reduced to a conventional static shortest-path calculation.
+# - TensorFlow/PyTorch: BLACKOUT does not reproduce PF-DTN's LSTM model.
+# - Scapy: Wireshark validation uses the separate socket demo initially; packet
+#   crafting is unnecessary for the core simulator.
+# - crcmod or similar: CRC is implemented directly for syllabus demonstration.
+# - tkinter/Qt/web frameworks: Pygame is the single live visualization layer.
+# - Mininet, Wireshark, and Cisco Packet Tracer: these are external tools, not
+#   pip packages and not runtime dependencies of the Python simulator.
+#
+# If the project later needs an ML extension, packet crafting, or a web UI, add
+# it in a separate optional requirements file instead of expanding this MVP set.
+# =============================================================================
