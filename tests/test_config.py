@@ -76,3 +76,29 @@ def test_adaptive_weights_must_sum_to_one() -> None:
 
     with pytest.raises(ValidationError, match="must sum to 1.0"):
         ScenarioConfig.model_validate(raw)
+
+
+def test_link_failure_cannot_outlive_simulation() -> None:
+    raw = {
+        "name": "invalid-failure-end",
+        "seed": 1,
+        "duration_seconds": 10,
+        "nodes": [
+            {"node_id": "A", "position": {"x": 0, "y": 0}},
+            {"node_id": "B", "position": {"x": 10, "y": 10}},
+        ],
+        "messages": [
+            {
+                "message_id": "m1",
+                "source": "A",
+                "destination": "B",
+                "size_bytes": 10,
+            }
+        ],
+        "forced_link_failures": [
+            {"node_a": "A", "node_b": "B", "start_time": 2, "end_time": 11}
+        ],
+    }
+
+    with pytest.raises(ValidationError, match="ends after the simulation"):
+        ScenarioConfig.model_validate(raw)

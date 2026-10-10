@@ -134,6 +134,8 @@ class ScenarioConfig(StrictModel):
                 raise ValueError("link failure references an unknown node")
             if failure.start_time >= self.duration_seconds:
                 raise ValueError("link failure starts after the simulation ends")
+            if failure.end_time > self.duration_seconds:
+                raise ValueError("link failure ends after the simulation ends")
 
         return self
 
@@ -147,4 +149,3 @@ def load_scenario(path: str | Path) -> ScenarioConfig:
     if not isinstance(raw, dict):
         raise ValueError("scenario YAML must contain a mapping at its root")
     return ScenarioConfig.model_validate(raw)
-
