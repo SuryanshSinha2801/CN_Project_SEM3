@@ -47,6 +47,17 @@ def test_copy_event_summary_identifies_the_replica_route() -> None:
     assert event_summary(event) == "copy m1-copy-0001: A → B"
 
 
+def test_contact_summary_calls_out_physical_contact() -> None:
+    event = SimulationEvent(
+        event_time=8,
+        sequence_number=3,
+        event_type=EventType.CONTACT_STARTED,
+        payload={"node_a": "E", "node_b": "F"},
+    )
+
+    assert event_summary(event) == "topology only: E ↔ F (no message sent)"
+
+
 def test_interactive_scenario_uses_message_text_and_selected_endpoints() -> None:
     base = load_scenario("configs/presentation.yaml")
 
@@ -86,3 +97,38 @@ def test_interactive_message_reroutes_after_seeded_random_failure() -> None:
     assert failed_link == ("B", "C")
     assert message.state is MessageState.DELIVERED
     assert [hop.to_node for hop in message.hop_history] == ["B", "E", "F", "D"]
+
+
+def test_destination_delivery_cancels_expiry_and_prevents_further_forwarding() -> None:
+    scenario = build_interactive_scenario(
+        load_scenario("configs/presentation.yaml"),
+        "Deliver only to E",
+        "A",
+        "E",
+    )
+    simulation = build_simulation(scenario)
+    simulation.run(until=0)
+    simulation.break_random_active_link(duration_seconds=8)
+    simulation.run()
+
+    message = simulation.messages[("interactive-message", "original")]
+    message_events = [
+        event
+        for event in simulation.engine.event_log
+        if event.payload.get("message_id") == "interactive-message"
+    ]
+    assert message.state is MessageState.DELIVERED
+    assert message.last_custody_holder == "E"
+    assert [hop.to_node for hop in message.hop_history] == ["B", "E"]
+    assert EventType.MESSAGE_EXPIRED not in {
+        event.event_type for event in message_events
+    }
+    delivery_index = next(
+        index
+        for index, event in enumerate(message_events)
+        if event.event_type is EventType.MESSAGE_DELIVERED
+    )
+    assert not any(
+        event.event_type is EventType.TRANSFER_COMPLETED
+        for event in message_events[delivery_index + 1 :]
+    )

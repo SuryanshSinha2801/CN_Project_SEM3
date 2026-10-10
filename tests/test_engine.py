@@ -90,6 +90,25 @@ def test_handler_can_schedule_another_event() -> None:
     assert processed[-1].event_time == 4
 
 
+def test_cancel_scheduled_removes_only_matching_future_events() -> None:
+    engine = SimulationEngine(seed=1)
+    engine.schedule_at(3, EventType.MESSAGE_EXPIRED, {"message_id": "keep"})
+    engine.schedule_at(4, EventType.MESSAGE_EXPIRED, {"message_id": "cancel"})
+    engine.schedule_at(5, EventType.SIMULATION_ENDED)
+
+    removed = engine.cancel_scheduled(
+        EventType.MESSAGE_EXPIRED,
+        lambda event: event.payload["message_id"] == "cancel",
+    )
+    processed = engine.run()
+
+    assert removed == 1
+    assert [event.event_type for event in processed] == [
+        EventType.MESSAGE_EXPIRED,
+        EventType.SIMULATION_ENDED,
+    ]
+
+
 def test_reset_replays_seeded_randomness() -> None:
     engine = SimulationEngine(seed=42)
     first_sequence = [engine.random.random() for _ in range(3)]

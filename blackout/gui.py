@@ -70,7 +70,10 @@ def event_summary(event: SimulationEvent) -> str:
     payload = event.payload
     event_type = event.event_type
     if event_type in {EventType.CONTACT_STARTED, EventType.CONTACT_ENDED}:
-        return f"{payload['node_a']} ↔ {payload['node_b']}"
+        return (
+            f"topology only: {payload['node_a']} ↔ {payload['node_b']} "
+            "(no message sent)"
+        )
     if event_type in {EventType.LINK_FAILED, EventType.LINK_RESTORED}:
         kind = "random" if payload.get("random_failure") else "scripted"
         return f"{payload['node_a']}–{payload['node_b']} ({kind})"
@@ -122,6 +125,7 @@ class BlackoutApp:
         self.playing = False
         self.after_id: str | None = None
         self.next_random_failure_time: float | None = None
+        self.delivery_complete = False
 
         root.title("BLACKOUT — Delay-Tolerant Network Simulation")
         root.geometry("1280x760")
@@ -166,8 +170,8 @@ class BlackoutApp:
         ttk.Label(
             controls,
             text=(
-                "Green = active contact   Red dashed = forced failure   "
-                "Gold ring = message custodian"
+                "Green = radio proximity only   Red dashed = failed link   "
+                "Gold arrow = actual message route"
             ),
         ).pack(side="right")
 
@@ -279,13 +283,23 @@ class BlackoutApp:
         scrollbar.pack(side="right", fill="y")
 
     def step(self) -> None:
+        if self.delivery_complete:
+            self.status_var.set("Message already delivered — reset or start a new message")
+            return
         event = self.simulation.step()
         if event is None:
             self.playing = False
             self.status_var.set("Simulation complete")
             return
         self._record_event(event)
-        self._maybe_inject_random_failure()
+        if event.event_type is EventType.MESSAGE_DELIVERED:
+            self.playing = False
+            self.delivery_complete = True
+            self.status_var.set(
+                f"Delivered to {event.payload['node_id']} — routing stopped"
+            )
+        else:
+            self._maybe_inject_random_failure()
         self._render()
 
     def start_custom_message(self) -> None:
@@ -307,6 +321,7 @@ class BlackoutApp:
             self.after_id = None
         self.simulation = build_simulation(self.scenario)
         self.next_random_failure_time = 0 if self.auto_failures_var.get() else None
+        self.delivery_complete = False
         self._clear_trace()
         self.status_var.set(
             f"Custom message ready: {self.source_var.get()} → "
@@ -356,6 +371,8 @@ class BlackoutApp:
             return
         before = len(self.simulation.engine.event_log)
         self.step()
+        if not self.playing:
+            return
         if len(self.simulation.engine.event_log) == before:
             return
         delay_ms = max(80, int(650 / self.speed_var.get()))
@@ -367,6 +384,7 @@ class BlackoutApp:
             self.root.after_cancel(self.after_id)
             self.after_id = None
         self.simulation.reset()
+        self.delivery_complete = False
         self.next_random_failure_time = (
             0 if self.auto_failures_var.get() and "-interactive" in self.scenario.name else None
         )
@@ -436,6 +454,20 @@ class BlackoutApp:
             self._draw_link(positions[node_a], positions[node_b], "#ef4444", dash=(8, 5), width=3)
         for node_a, node_b in snapshot.active_contacts:
             self._draw_link(positions[node_a], positions[node_b], "#22c55e", width=3)
+
+        route_hops = {
+            hop
+            for message in snapshot.messages
+            for hop in message.route_hops
+        }
+        for node_a, node_b in sorted(route_hops):
+            self._draw_link(
+                positions[node_a],
+                positions[node_b],
+                "#facc15",
+                width=5,
+                arrow=True,
+            )
 
         holders = {
             message.custody_holder
@@ -513,8 +545,16 @@ class BlackoutApp:
         *,
         dash: tuple[int, int] | None = None,
         width: int = 2,
+        arrow: bool = False,
     ) -> None:
-        self.canvas.create_line(*start, *end, fill=color, width=width, dash=dash)
+        self.canvas.create_line(
+            *start,
+            *end,
+            fill=color,
+            width=width,
+            dash=dash,
+            arrow=tk.LAST if arrow else tk.NONE,
+        )
 
 
 def launch_gui(scenario_path: str | Path) -> None:

@@ -38,6 +38,7 @@ class MessageSnapshot:
     state: MessageState
     custody_holder: str
     hop_count: int
+    route_hops: tuple[tuple[str, str], ...]
     remaining_ttl: float
 
 
@@ -176,6 +177,9 @@ class ScenarioSimulation:
                 state=message.state,
                 custody_holder=message.last_custody_holder,
                 hop_count=message.hop_count,
+                route_hops=tuple(
+                    (hop.from_node, hop.to_node) for hop in message.hop_history
+                ),
                 remaining_ttl=message.remaining_ttl(self._engine.current_time),
             )
             for message in sorted(self._messages.values(), key=lambda item: item.identity)
@@ -551,6 +555,11 @@ class ScenarioSimulation:
             received.mark_delivered(at_time, receiver.node_id)
             if received.message_id not in self._delivered_message_ids:
                 self._delivered_message_ids.add(received.message_id)
+                engine.cancel_scheduled(
+                    EventType.MESSAGE_EXPIRED,
+                    lambda queued: queued.payload.get("message_id")
+                    == received.message_id,
+                )
                 receiver.counters.messages_delivered += 1
                 engine.schedule(
                     EventType.MESSAGE_DELIVERED,

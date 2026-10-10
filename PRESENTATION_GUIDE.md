@@ -98,8 +98,16 @@ Suggested narration while pressing **Step Event**:
 5. E forwards to F when that contact becomes useful.
 6. F later reaches D and delivery completes at simulated time 11.
 
-Green lines are active contacts, dashed red lines are forced failures, the gold ring is
-the current custodian, and the right panel explains each event and Adaptive decision.
+Green lines are active contacts, dashed red lines are forced failures, gold arrows are
+completed message hops, the gold ring is the current custodian, and the right panel
+explains each event and Adaptive decision.
+
+Green lines and `contact_started` events represent radio proximity only; they do not mean
+that the message was forwarded. Gold arrows show the actual message route. Once the
+selected destination receives the message, the GUI stops immediately and cancels its
+pending expiry event. This follows PF-DTN's separation between contextual mobility/contact
+collection and adaptive relay selection: observing a contact is not the same operation as
+selecting that node as a relay.
 
 ### Interactive message and random failure
 

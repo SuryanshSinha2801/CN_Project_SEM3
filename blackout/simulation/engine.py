@@ -108,6 +108,28 @@ class SimulationEngine:
 
         self._handlers[event_type].append(handler)
 
+    def cancel_scheduled(
+        self,
+        event_type: EventType,
+        predicate: Callable[[SimulationEvent], bool] | None = None,
+    ) -> int:
+        """Cancel queued events of one type and return the number removed."""
+
+        retained: list[SimulationEvent] = []
+        removed = 0
+        for event in self._queue:
+            matches = event.event_type is event_type and (
+                predicate is None or predicate(event)
+            )
+            if matches:
+                removed += 1
+            else:
+                retained.append(event)
+        if removed:
+            self._queue = retained
+            heapq.heapify(self._queue)
+        return removed
+
     def step(self) -> SimulationEvent | None:
         """Process exactly one event, or return ``None`` when the queue is empty."""
 
