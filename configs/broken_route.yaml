@@ -1,0 +1,26 @@
+schema_version: 1
+name: deterministic-broken-route-acceptance-test
+seed: 42
+duration_seconds: 15
+area: {width: 1200, height: 700}
+routing_policy: adaptive
+packet_loss_probability: 0
+spray_copy_budget: 4
+adaptive_weights:
+  connectivity: 0.35
+  proximity: 0.35
+  buffer_availability: 0.20
+  node_state: 0.10
+  minimum_improvement: 0.05
+nodes:
+  - {node_id: A, position: {x: 100, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
+  - {node_id: B, position: {x: 280, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
+  - {node_id: C, position: {x: 460, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
+  - {node_id: D, position: {x: 1000, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
+  - {node_id: E, position: {x: 460, y: 520}, communication_range: 180, buffer_capacity_bytes: 8192}
+  - {node_id: F, position: {x: 720, y: 450}, communication_range: 180, buffer_capacity_bytes: 8192}
+messages:
+  - {message_id: demo, source: A, destination: D, size_bytes: 1024, creation_time: 0, ttl_seconds: 15}
+forced_link_failures:
+  - {node_a: B, node_b: C, start_time: 2, end_time: 15}
+

@@ -4,7 +4,7 @@ BLACKOUT is a Python-based educational simulator for studying communication in i
 
 ## Project status
 
-The project is currently in the architecture and implementation-planning stage. The repository contains the approved modular design and a pinned Python dependency set. Simulator source code and tests will be added incrementally.
+The project has entered implementation. The repository contains the approved modular design, a pinned Python dependency set, validated YAML scenario models, two initial scenarios, and the first automated tests. The discrete-event engine is the next milestone.
 
 ## Planned capabilities
 
@@ -64,6 +64,19 @@ pytest --version
 ruff --version
 ```
 
+Validate the supplied scenarios:
+
+```powershell
+python -m blackout validate configs/default.yaml
+python -m blackout validate configs/broken_route.yaml
+```
+
+Run the automated tests:
+
+```powershell
+python -m pytest
+```
+
 ## Development principles
 
 - Use simulated time rather than wall-clock time for experiments.
@@ -78,6 +91,10 @@ ruff --version
 
 - `BLACKOUT_ARCHITECTURE.md` - implementation architecture and experimental design
 - `requirement.txt` - pinned runtime, analysis, testing, and quality dependencies
+- `blackout/config.py` - strict Pydantic scenario schema and YAML loader
+- `configs/default.yaml` - baseline six-node experiment configuration
+- `configs/broken_route.yaml` - deterministic B-C failure acceptance scenario
+- `tests/test_config.py` - configuration and reproducibility tests
 
 ## License
 
