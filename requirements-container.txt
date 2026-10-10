@@ -1,0 +1,9 @@
+# Runtime dependencies used by the simulator and CLI.
+PyYAML==6.0.3
+pydantic==2.13.5
+rich==15.0.0
+
+# Test dependencies are included so the recipient can exercise the image.
+pytest==9.1.1
+pytest-cov==7.1.0
+hypothesis==6.168.5

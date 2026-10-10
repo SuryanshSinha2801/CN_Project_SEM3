@@ -20,9 +20,12 @@ build/
 dist/
 *.egg-info/
 *.whl
+*.tar
+*.tar.gz
 
 # Generated simulation output
 results/
+docker-results/
 output/
 tmp/
 temp/

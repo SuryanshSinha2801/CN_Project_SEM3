@@ -136,6 +136,13 @@ The experiment produces `comparison.csv`, `delivery-comparison.svg`, and a `runs
 containing each run's event CSV and metrics JSON. Routing copies and link retransmissions
 are deliberately reported as separate metrics.
 
+## Docker package
+
+Use [DOCKER.md](DOCKER.md) to build the Python 3.13 test image, run scenarios, preserve
+result files, export the image as a `.tar`, verify its SHA-256 checksum, and load it on
+another computer. The Docker image covers the engine and CLI; run Tkinter natively because
+ordinary containers do not have a desktop display.
+
 Run the automated tests:
 
 ```powershell
