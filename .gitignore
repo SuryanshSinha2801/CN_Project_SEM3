@@ -18,10 +18,12 @@ env/
 # Build and packaging outputs
 build/
 dist/
+*.spec
 *.egg-info/
 *.whl
 *.tar
 *.tar.gz
+*.zip
 
 # Generated simulation output
 results/
@@ -60,6 +62,7 @@ service-account*.json
 .DS_Store
 Thumbs.db
 desktop.ini
+.freebuff/
 
 # Documents and media supplied for private project review
 *.doc

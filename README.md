@@ -143,6 +143,12 @@ result files, export the image as a `.tar`, verify its SHA-256 checksum, and loa
 another computer. The Docker image covers the engine and CLI; run Tkinter natively because
 ordinary containers do not have a desktop display.
 
+## Zero-install Windows application
+
+For a friend who should not install Docker or Python, build the portable Windows ZIP using
+[PORTABLE_WINDOWS.md](PORTABLE_WINDOWS.md). It contains a double-clickable
+`BLACKOUT_Simulator.exe` with Python 3.13, dependencies, configuration, and Tkinter bundled.
+
 Run the automated tests:
 
 ```powershell
