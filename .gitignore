@@ -14,7 +14,6 @@ htmlcov/
 .venv/
 venv/
 env/
-.python-version
 
 # Build and packaging outputs
 build/

@@ -35,7 +35,7 @@ See [BLACKOUT_ARCHITECTURE.md](BLACKOUT_ARCHITECTURE.md) for:
 
 ## Technology stack
 
-- CPython 3.14
+- CPython 3.13
 - Pygame Community Edition
 - PyYAML and Pydantic
 - NumPy, Pandas, and Matplotlib
@@ -50,7 +50,7 @@ Exact versions and dependency explanations are in [requirement.txt](requirement.
 ```powershell
 git clone https://github.com/SuryanshSinha2801/CN_Project_SEM3.git
 cd CN_Project_SEM3
-py -3.14 -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirement.txt
