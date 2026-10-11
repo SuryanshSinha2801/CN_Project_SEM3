@@ -1,7 +1,7 @@
 schema_version: 1
 name: BLACKOUT-professor-presentation
 seed: 2801
-duration_seconds: 13
+duration_seconds: 18
 area: {width: 1200, height: 700}
 routing_policy: adaptive
 packet_loss_probability: 0
@@ -20,18 +20,20 @@ adaptive_contact_window_seconds: 30
 adaptive_contact_saturation: 3
 adaptive_edge_cooldown_seconds: 2
 nodes:
-  - {node_id: A, position: {x: 100, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
-  - {node_id: B, position: {x: 280, y: 350}, communication_range: 230, buffer_capacity_bytes: 8192}
-  - {node_id: C, position: {x: 460, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
-  - {node_id: D, position: {x: 1000, y: 350}, communication_range: 180, buffer_capacity_bytes: 8192}
-  - {node_id: E, position: {x: 650, y: 600}, communication_range: 230, buffer_capacity_bytes: 8192}
-  - {node_id: F, position: {x: 800, y: 600}, communication_range: 230, buffer_capacity_bytes: 8192}
+  - {node_id: A, position: {x: 80, y: 350}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: B, position: {x: 250, y: 180}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: C, position: {x: 250, y: 520}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: D, position: {x: 1120, y: 350}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: E, position: {x: 450, y: 100}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: F, position: {x: 450, y: 350}, communication_range: 320, buffer_capacity_bytes: 8192}
+  - {node_id: G, position: {x: 450, y: 600}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: H, position: {x: 700, y: 170}, communication_range: 320, buffer_capacity_bytes: 8192}
+  - {node_id: I, position: {x: 700, y: 530}, communication_range: 320, buffer_capacity_bytes: 8192}
+  - {node_id: J, position: {x: 900, y: 350}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: K, position: {x: 950, y: 120}, communication_range: 300, buffer_capacity_bytes: 8192}
+  - {node_id: L, position: {x: 950, y: 580}, communication_range: 300, buffer_capacity_bytes: 8192}
 messages:
-  - {message_id: demo, source: A, destination: D, size_bytes: 1024, creation_time: 0, ttl_seconds: 13}
-movements:
-  - {node_id: E, time: 6, position: {x: 450, y: 500}}
-  - {node_id: F, time: 8, position: {x: 620, y: 500}}
-  - {node_id: F, time: 10, position: {x: 850, y: 350}}
+  - {message_id: demo, source: A, destination: D, size_bytes: 1024, creation_time: 0, ttl_seconds: 18}
+movements: []
 forced_link_failures:
-  - {node_a: B, node_b: C, start_time: 2, end_time: 12}
-  - {node_a: C, node_b: E, start_time: 0, end_time: 13}
+  - {node_a: B, node_b: F, start_time: 1.5, end_time: 12}

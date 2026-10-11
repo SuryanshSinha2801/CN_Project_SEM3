@@ -1,3 +1,5 @@
+import math
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -29,8 +31,32 @@ def test_broken_route_scenario_is_deterministic() -> None:
 def test_presentation_scenario_has_scripted_alternate_route() -> None:
     scenario = load_scenario(PROJECT_ROOT / "configs" / "presentation.yaml")
 
-    assert [movement.node_id for movement in scenario.movements] == ["E", "F", "F"]
-    assert [movement.time for movement in scenario.movements] == [6, 8, 10]
+    assert len(scenario.nodes) == 12
+    assert scenario.movements == ()
+    failure = scenario.forced_link_failures[0]
+    assert (failure.node_a, failure.node_b) == ("B", "F")
+    assert (failure.start_time, failure.end_time) == (1.5, 12)
+
+
+def test_presentation_mesh_has_independent_upper_and_lower_paths() -> None:
+    scenario = load_scenario(PROJECT_ROOT / "configs" / "presentation.yaml")
+    nodes = {node.node_id: node for node in scenario.nodes}
+    paths = (
+        ("A", "B", "E", "H", "K", "D"),
+        ("A", "C", "G", "I", "L", "D"),
+    )
+
+    for path in paths:
+        for node_a_id, node_b_id in pairwise(path):
+            node_a = nodes[node_a_id]
+            node_b = nodes[node_b_id]
+            distance = math.hypot(
+                node_a.position.x - node_b.position.x,
+                node_a.position.y - node_b.position.y,
+            )
+            assert distance <= min(
+                node_a.communication_range, node_b.communication_range
+            )
 
 
 def test_duplicate_node_ids_are_rejected() -> None:
@@ -81,7 +107,7 @@ def test_adaptive_weights_must_sum_to_one() -> None:
         ],
     }
 
-    with pytest.raises(ValidationError, match="must sum to 1.0"):
+    with pytest.raises(ValidationError, match=r"must sum to 1\.0"):
         ScenarioConfig.model_validate(raw)
 
 

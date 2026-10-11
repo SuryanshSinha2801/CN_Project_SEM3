@@ -18,6 +18,7 @@ env/
 # Build and packaging outputs
 build/
 dist/
+portable-test/
 *.spec
 *.egg-info/
 *.whl

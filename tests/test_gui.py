@@ -3,7 +3,7 @@ import pytest
 from blackout.cli import build_parser
 from blackout.config import load_scenario
 from blackout.events import EventType, SimulationEvent
-from blackout.gui import build_interactive_scenario, event_summary
+from blackout.gui import build_interactive_scenario, event_summary, format_link, parse_link
 from blackout.models import MessageState
 from blackout.simulation import build_simulation
 
@@ -58,6 +58,22 @@ def test_contact_summary_calls_out_physical_contact() -> None:
     assert event_summary(event) == "topology only: E ↔ F (no message sent)"
 
 
+def test_link_selector_round_trips_node_ids() -> None:
+    assert format_link(("F", "H")) == "F — H"
+    assert parse_link("F — H") == ("F", "H")
+
+
+def test_selected_failure_is_identified_in_event_trace() -> None:
+    event = SimulationEvent(
+        event_time=2,
+        sequence_number=4,
+        event_type=EventType.LINK_FAILED,
+        payload={"node_a": "F", "node_b": "H", "manual_failure": True},
+    )
+
+    assert event_summary(event) == "F-H (selected)"
+
+
 def test_interactive_scenario_uses_message_text_and_selected_endpoints() -> None:
     base = load_scenario("configs/presentation.yaml")
 
@@ -68,9 +84,7 @@ def test_interactive_scenario_uses_message_text_and_selected_endpoints() -> None
     assert message.destination == "F"
     assert message.content == "Help is required"
     assert message.size_bytes == 1024
-    assert len(scenario.forced_link_failures) == 1
-    background_failure = scenario.forced_link_failures[0]
-    assert {background_failure.node_a, background_failure.node_b} == {"C", "E"}
+    assert scenario.forced_link_failures == ()
 
 
 def test_interactive_scenario_rejects_same_endpoint() -> None:
@@ -94,9 +108,9 @@ def test_interactive_message_reroutes_after_seeded_random_failure() -> None:
     simulation.run()
 
     message = simulation.messages[("interactive-message", "original")]
-    assert failed_link == ("B", "C")
+    assert failed_link == ("G", "I")
     assert message.state is MessageState.DELIVERED
-    assert [hop.to_node for hop in message.hop_history] == ["B", "E", "F", "D"]
+    assert [hop.to_node for hop in message.hop_history] == ["B", "F", "H", "J", "D"]
 
 
 def test_destination_delivery_cancels_expiry_and_prevents_further_forwarding() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from itertools import combinations
 from pathlib import Path
 from tkinter import messagebox, ttk
 from typing import Any
@@ -15,6 +16,22 @@ from blackout.simulation import ScenarioSimulation, build_simulation
 CANVAS_WIDTH = 760
 CANVAS_HEIGHT = 520
 NODE_RADIUS = 24
+LINK_SEPARATOR = " — "
+
+
+def format_link(link: tuple[str, str]) -> str:
+    """Format an undirected link for the GUI selector."""
+
+    return LINK_SEPARATOR.join(link)
+
+
+def parse_link(value: str) -> tuple[str, str]:
+    """Parse a link selected in the GUI."""
+
+    endpoints = tuple(part.strip() for part in value.split(LINK_SEPARATOR))
+    if len(endpoints) != 2 or not all(endpoints) or endpoints[0] == endpoints[1]:
+        raise ValueError("Select a valid link to fail")
+    return endpoints[0], endpoints[1]
 
 
 def build_interactive_scenario(
@@ -75,8 +92,13 @@ def event_summary(event: SimulationEvent) -> str:
             "(no message sent)"
         )
     if event_type in {EventType.LINK_FAILED, EventType.LINK_RESTORED}:
-        kind = "random" if payload.get("random_failure") else "scripted"
-        return f"{payload['node_a']}–{payload['node_b']} ({kind})"
+        if payload.get("random_failure"):
+            kind = "random"
+        elif payload.get("manual_failure"):
+            kind = "selected"
+        else:
+            kind = "scripted"
+        return f"{payload['node_a']}-{payload['node_b']} ({kind})"
     if event_type is EventType.FORWARD_DECISION:
         target = payload.get("to_node") or "none"
         return f"{payload['action']}: {payload['from_node']} → {target} — {payload['reason']}"
@@ -222,11 +244,31 @@ class BlackoutApp:
             style="Accent.TButton",
             command=self.start_custom_message,
         ).pack(side="left", padx=(0, 6))
+        failure_row = ttk.Frame(composer)
+        failure_row.pack(fill="x", pady=(7, 0))
+        ttk.Label(failure_row, text="Link to fail:").pack(side="left")
+        self.link_var = tk.StringVar()
+        self.link_box = ttk.Combobox(
+            failure_row,
+            textvariable=self.link_var,
+            state="readonly",
+            width=12,
+        )
+        self.link_box.pack(side="left", padx=(4, 8))
         ttk.Button(
-            action_row,
+            failure_row,
+            text="Break Selected Link (5s)",
+            command=self.break_selected_link,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            failure_row,
             text="Break Random Link",
             command=self.break_random_link,
         ).pack(side="left")
+        ttk.Label(
+            failure_row,
+            text="Choose a green link, or keep the seeded random failure.",
+        ).pack(side="left", padx=(12, 0))
 
         body = ttk.Panedwindow(self.root, orient="horizontal")
         body.pack(fill="both", expand=True, padx=16, pady=(0, 14))
@@ -337,7 +379,26 @@ class BlackoutApp:
             self.status_var.set("No active link is currently available to break")
             return
         self.status_var.set(
-            f"Random failure queued for {link[0]}–{link[1]}; rerouting will be detected"
+            f"Random failure queued for {link[0]}-{link[1]}; rerouting will be detected"
+        )
+
+    def break_selected_link(self) -> None:
+        """Fail the physical link selected by the presenter for five seconds."""
+
+        try:
+            node_a, node_b = parse_link(self.link_var.get())
+        except ValueError as exc:
+            self.status_var.set(str(exc))
+            return
+        link = self.simulation.break_link(node_a, node_b, duration_seconds=5)
+        if link is None:
+            self.status_var.set(
+                f"Link {node_a}-{node_b} is unavailable or already failed"
+            )
+            return
+        self.status_var.set(
+            f"Selected failure queued for {link[0]}-{link[1]}; "
+            "the router will find another path"
         )
 
     def _maybe_inject_random_failure(self) -> None:
@@ -352,7 +413,7 @@ class BlackoutApp:
         self.next_random_failure_time = None
         if link is not None:
             self.status_var.set(
-                f"Auto failure: {link[0]}–{link[1]} broke; finding alternate route"
+                f"Auto failure: {link[0]}-{link[1]} broke; finding alternate route"
             )
 
     def toggle_play(self) -> None:
@@ -371,12 +432,17 @@ class BlackoutApp:
             return
         before = len(self.simulation.engine.event_log)
         self.step()
-        if not self.playing:
+        if not self._playback_is_active():
             return
         if len(self.simulation.engine.event_log) == before:
             return
         delay_ms = max(80, int(650 / self.speed_var.get()))
         self.after_id = self.root.after(delay_ms, self._play_next)
+
+    def _playback_is_active(self) -> bool:
+        """Read playback state after a step without retaining a stale type narrowing."""
+
+        return self.playing
 
     def reset(self) -> None:
         self.playing = False
@@ -442,6 +508,7 @@ class BlackoutApp:
 
     def _render(self) -> None:
         snapshot = self.simulation.snapshot()
+        self._update_link_choices(snapshot.active_contacts)
         self.canvas.delete("all")
         width = max(self.canvas.winfo_width(), CANVAS_WIDTH)
         height = max(self.canvas.winfo_height(), CANVAS_HEIGHT)
@@ -526,6 +593,30 @@ class BlackoutApp:
             f"Seed: {self.scenario.seed} (reproducible)"
         )
 
+    def _update_link_choices(
+        self, active_contacts: tuple[tuple[str, str], ...]
+    ) -> None:
+        """Keep the selector synchronized with usable physical links."""
+
+        links = set(active_contacts)
+        if not links:
+            for node_a_id, node_b_id in combinations(sorted(self.simulation.nodes), 2):
+                node_a = self.simulation.nodes[node_a_id]
+                node_b = self.simulation.nodes[node_b_id]
+                link = (node_a_id, node_b_id)
+                if (
+                    node_a.is_available
+                    and node_b.is_available
+                    and node_a.in_range_of(node_b)
+                    and link not in self.simulation.topology.blocked_links
+                ):
+                    links.add(link)
+        choices = tuple(format_link(link) for link in sorted(links))
+        current = self.link_var.get()
+        self.link_box.configure(values=choices)
+        if current not in choices:
+            self.link_var.set(choices[0] if choices else "")
+
     def _canvas_position(
         self, x: float, y: float, width: int, height: int
     ) -> tuple[float, float]:
@@ -547,14 +638,17 @@ class BlackoutApp:
         width: int = 2,
         arrow: bool = False,
     ) -> None:
-        self.canvas.create_line(
-            *start,
-            *end,
-            fill=color,
-            width=width,
-            dash=dash,
-            arrow=tk.LAST if arrow else tk.NONE,
-        )
+        coordinates = (start, end)
+        if dash is not None and arrow:
+            self.canvas.create_line(
+                coordinates, fill=color, width=width, dash=dash, arrow="last"
+            )
+        elif dash is not None:
+            self.canvas.create_line(coordinates, fill=color, width=width, dash=dash)
+        elif arrow:
+            self.canvas.create_line(coordinates, fill=color, width=width, arrow="last")
+        else:
+            self.canvas.create_line(coordinates, fill=color, width=width)
 
 
 def launch_gui(scenario_path: str | Path) -> None:
