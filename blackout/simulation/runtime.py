@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping
 
 from blackout.config import MessageConfig, RoutingPolicy, ScenarioConfig
 from blackout.events import EventType, SimulationEvent
@@ -13,7 +13,7 @@ from blackout.models import Message, MessageState, Node, NodeState, Position
 from blackout.routing import AdaptiveRouter, ForwardAction, ForwardDecision
 from blackout.simulation.engine import SimulationEngine
 from blackout.simulation.scenario import schedule_scenario
-from blackout.simulation.topology import Link, TopologyManager
+from blackout.simulation.topology import Link, TopologyManager, canonical_link
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,17 +104,62 @@ class ScenarioSimulation:
 
         if duration_seconds <= 0:
             raise ValueError("failure duration must be positive")
-        if self._engine.current_time >= self._scenario.duration_seconds:
-            return None
         candidates = sorted(self._topology.active_contacts)
         if not candidates:
             return None
         link = self._engine.random.choice(candidates)
+        return self._schedule_temporary_link_failure(
+            link, duration_seconds, random_failure=True
+        )
+
+    def break_link(
+        self, node_a: str, node_b: str, duration_seconds: float = 5
+    ) -> Link | None:
+        """Schedule a user-selected physical link failure and restoration.
+
+        A link may be selected before the first simulation event, so geometric
+        radio reachability is accepted in addition to an already active contact.
+        ``None`` means that the link is unavailable or already blocked.
+        """
+
+        link = canonical_link(node_a, node_b)
+        unknown = [node_id for node_id in link if node_id not in self._nodes]
+        if unknown:
+            raise ValueError(f"link references unknown node {unknown[0]!r}")
+        first, second = (self._nodes[node_id] for node_id in link)
+        if (
+            link in self._topology.blocked_links
+            or not first.is_available
+            or not second.is_available
+            or not first.in_range_of(second)
+        ):
+            return None
+        return self._schedule_temporary_link_failure(
+            link, duration_seconds, manual_failure=True
+        )
+
+    def _schedule_temporary_link_failure(
+        self,
+        link: Link,
+        duration_seconds: float,
+        *,
+        random_failure: bool = False,
+        manual_failure: bool = False,
+    ) -> Link | None:
+        if duration_seconds <= 0:
+            raise ValueError("failure duration must be positive")
+        if self._engine.current_time >= self._scenario.duration_seconds:
+            return None
         restore_time = min(
             self._engine.current_time + duration_seconds,
             self._scenario.duration_seconds,
         )
-        payload = {"node_a": link[0], "node_b": link[1], "random_failure": True}
+        payload = {
+            "node_a": link[0],
+            "node_b": link[1],
+            "random_failure": random_failure,
+            "manual_failure": manual_failure,
+        }
         self._engine.schedule(EventType.LINK_FAILED, payload)
         self._engine.schedule_at(restore_time, EventType.LINK_RESTORED, payload)
         return link

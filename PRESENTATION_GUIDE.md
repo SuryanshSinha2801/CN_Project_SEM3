@@ -93,10 +93,10 @@ Suggested narration while pressing **Step Event**:
 
 1. At time 0, message `demo` is created at A.
 2. A transfers custody to B.
-3. The B-C link fails before B can complete that route; B retains the message.
-4. E moves into range and has enough Adaptive utility, so B forwards to E.
-5. E forwards to F when that contact becomes useful.
-6. F later reaches D and delivery completes at simulated time 11.
+3. The B-F link fails before B can complete that route; B retains the message.
+4. The mesh still provides upper and lower alternatives.
+5. Adaptive routing selects B-E-H-J-D.
+6. Delivery completes at simulated time 5.5 despite the failed direct choice.
 
 Green lines are active contacts, dashed red lines are forced failures, gold arrows are
 completed message hops, the gold ring is the current custodian, and the right panel
@@ -109,15 +109,19 @@ pending expiry event. This follows PF-DTN's separation between contextual mobili
 collection and adaptive relay selection: observing a contact is not the same operation as
 selecting that node as a relay.
 
-### Interactive message and random failure
+### Interactive message and controlled failures
 
 1. Enter any message in the **Message** field.
 2. Select different nodes under **Source** and **Destination**.
-3. Keep **Automatic random failures** selected.
-4. Click **Start Custom Message**, followed by **Play**.
-5. Point out the red failed link and the immediate `transfer_failed` event. The sender
+3. Keep **Automatic random failures** selected for a seeded random outage, or clear it
+   when you want full manual control.
+4. Click **Start Custom Message**.
+5. Optionally choose an edge under **Link to fail** and click
+   **Break Selected Link (5s)**.
+6. Click **Play**.
+7. Point out the red failed link and the immediate `transfer_failed` event. The sender
    keeps custody, and later `forward_decision` events explain the alternate route.
-6. Use **Break Random Link** if you want to inject another temporary failure manually.
+8. Use **Break Random Link** if you want another temporary seeded failure.
 
 Random selection uses the scenario seed, so resetting and replaying the same inputs gives
 the same failure. Short text is carried in a 1 KiB simulated application packet, while

@@ -98,10 +98,9 @@ Use **Step Event** to explain the event queue one event at a time, or **Play** t
 the complete deterministic trace. In the prepared presentation scenario:
 
 1. The message starts at A and custody moves to B.
-2. The B-C link fails before that transfer can complete, so B safely retains the message.
-3. E moves into range at simulated time 6 and passes the Adaptive score threshold.
-4. F appears at time 8 and becomes the next custodian.
-5. F contacts destination D at time 10; delivery completes at time 11.
+2. The B-F link fails before that transfer can complete, so B safely retains the message.
+3. The 12-node mesh offers upper, middle, and lower alternatives.
+4. Adaptive routing selects B-E-H-J-D and completes delivery at time 5.5.
 
 The right panel shows every event and the latest Adaptive decision, including normalized
 connectivity (C), proximity (P), buffer availability (B), node state (S), total scores,
@@ -112,7 +111,9 @@ For an interactive run, type a message, choose different source and destination 
 leave **Automatic random failures** enabled, and click **Start Custom Message**, then
 **Play**. The simulator breaks a seeded random live link, records the detection, retains
 custody at the sender, and applies the routing policy to find an alternate contact. Use
-**Break Random Link** to inject another three-second failure manually.
+**Break Random Link** to inject another three-second failure manually. Alternatively,
+choose any currently usable edge under **Link to fail** and click
+**Break Selected Link (5s)** to demonstrate a specific outage and its alternate route.
 
 The full presentation narrative is in [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
 

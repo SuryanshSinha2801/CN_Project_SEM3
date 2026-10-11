@@ -25,14 +25,15 @@ def test_presentation_scenario_routes_around_failed_link() -> None:
     assert [(hop.from_node, hop.to_node) for hop in message.hop_history] == [
         ("A", "B"),
         ("B", "E"),
-        ("E", "F"),
-        ("F", "D"),
+        ("E", "H"),
+        ("H", "J"),
+        ("J", "D"),
     ]
-    assert message.delivery_time == 11
+    assert message.delivery_time == 5.5
     assert EventType.MESSAGE_EXPIRED not in {
         event.event_type for event in simulation.engine.event_log
     }
     assert any(
-        event.payload["from_node"] == "B" and event.payload["to_node"] == "C"
+        event.payload["from_node"] == "B" and event.payload["to_node"] == "F"
         for event in failed_links
     )

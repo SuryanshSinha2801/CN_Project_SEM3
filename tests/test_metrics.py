@@ -19,16 +19,16 @@ def test_metrics_match_successful_presentation_trace() -> None:
     assert summary.generated_messages == 1
     assert summary.delivered_messages == 1
     assert summary.delivery_ratio == 1
-    assert summary.average_delay_seconds == 11
-    assert summary.average_hop_count == 4
-    assert summary.successful_transfers == 4
+    assert summary.average_delay_seconds == 5.5
+    assert summary.average_hop_count == 5
+    assert summary.successful_transfers == 5
     assert summary.failed_transfers == 1
     assert summary.routing_copies == 0
     assert summary.link_retransmissions == 0
-    assert summary.routing_overhead_ratio == 3
+    assert summary.routing_overhead_ratio == 4
     assert summary.delivered_payload_bytes == 1024
-    assert summary.throughput_bytes_per_second == 1024 / 13
-    assert summary.average_buffer_utilization == pytest.approx(11 * 0.125 / (13 * 6))
+    assert summary.throughput_bytes_per_second == 1024 / 18
+    assert summary.average_buffer_utilization == pytest.approx(5.5 * 0.125 / (18 * 12))
     assert summary.peak_buffer_utilization == 0.125
 
 
