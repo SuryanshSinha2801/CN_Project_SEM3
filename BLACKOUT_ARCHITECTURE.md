@@ -251,7 +251,7 @@ The holder computes its own score using the same formula. Transfer custody only 
 
 `Score(v) >= Score(u) + delta`, with `delta = 0.05` initially.
 
-This hysteresis prevents ping-pong forwarding. Also maintain a short edge cooldown and a visited-node history. If scores tie, prefer higher destination proximity, then more free buffer, then the lexicographically smaller node ID for deterministic execution.
+This hysteresis is the preferred forwarding rule. When no eligible candidate reaches the threshold, forward to the highest-scoring unvisited candidate as a detour and recompute all factors at the new custodian. A short edge cooldown and visited-node history prevent ping-pong forwarding. If scores tie, prefer higher destination proximity, then more free buffer, then the lexicographically smaller node ID for deterministic execution.
 
 After a successful link-level ACK, the current holder deletes its adaptive copy and the relay becomes the sole custody holder. If transmission or ACK fails, the current holder keeps the copy. This makes the first Adaptive implementation single-copy and prevents uncontrolled replication.
 

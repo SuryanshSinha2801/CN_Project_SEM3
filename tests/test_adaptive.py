@@ -45,7 +45,7 @@ def test_adaptive_score_uses_all_four_normalized_factors() -> None:
     assert score.total == pytest.approx(expected_total)
 
 
-def test_hysteresis_holds_when_candidate_improvement_is_too_small() -> None:
+def test_hysteresis_falls_back_to_best_unvisited_candidate() -> None:
     holder = Node("A", Position(0, 0), 100, 100)
     candidate = Node("B", Position(0, 0), 100, 100)
     destination = Node("D", Position(100, 0), 100, 100)
@@ -61,9 +61,10 @@ def test_hysteresis_holds_when_candidate_improvement_is_too_small() -> None:
         0,
     )
 
-    assert decision.action is ForwardAction.HOLD
+    assert decision.action is ForwardAction.FORWARD
     assert decision.to_node == "B"
-    assert "requires at least" in decision.reason
+    assert "detour" in decision.reason
+    assert "recalculated after the hop" in decision.reason
     assert decision.score_components["candidate_total"] < (
         decision.score_components["holder_total"]
         + decision.score_components["minimum_improvement"]
@@ -106,4 +107,3 @@ def test_equal_candidate_scores_use_lexicographic_node_id() -> None:
 
     assert decision.action is ForwardAction.FORWARD
     assert decision.to_node == "B"
-

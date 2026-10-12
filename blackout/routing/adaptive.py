@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from blackout.config import AdaptiveWeights
 from blackout.models import Message, Node
@@ -154,16 +154,17 @@ class AdaptiveRouter:
         )
         required_score = holder_score.total + self._weights.minimum_improvement
         if peer_score.total + 1e-12 < required_score:
-            return self._hold_decision(
+            return self._forward_decision(
                 holder,
+                peer,
                 message,
                 holder_score,
+                peer_score,
                 (
-                    f"best candidate {peer.node_id} scored {peer_score.total:.3f}; "
-                    f"requires at least {required_score:.3f}"
+                    f"detour through best unvisited candidate {peer.node_id}; "
+                    f"score {peer_score.total:.3f} is below hysteresis target "
+                    f"{required_score:.3f}, so scores will be recalculated after the hop"
                 ),
-                candidate=peer,
-                candidate_score=peer_score,
             )
 
         return self._forward_decision(

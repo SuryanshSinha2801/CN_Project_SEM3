@@ -51,9 +51,11 @@ U = 0.35C + 0.35P + 0.20B + 0.10S
 - `B`: free-buffer fraction.
 - `S`: node-state utility.
 
-The copy moves only if the candidate improves the score by the configured hysteresis
-threshold. A cooldown prevents immediate ping-pong forwarding. Every component and the
-reason to forward or hold is placed in the event trace.
+The copy prefers a candidate that improves the score by the configured hysteresis
+threshold. If none qualifies, the best eligible unvisited neighbor becomes a detour and
+the scores are recalculated after that hop. Visited-node history and a cooldown prevent
+immediate ping-pong forwarding. Every component and the reason to forward or hold is
+placed in the event trace.
 
 ### Epidemic
 

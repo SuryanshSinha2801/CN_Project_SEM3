@@ -146,3 +146,27 @@ def test_destination_delivery_cancels_expiry_and_prevents_further_forwarding() -
         event.event_type is EventType.TRANSFER_COMPLETED
         for event in message_events[delivery_index + 1 :]
     )
+
+
+def test_low_score_detour_reaches_destination_after_direct_link_removal() -> None:
+    scenario = build_interactive_scenario(
+        load_scenario("configs/presentation.yaml"),
+        "Route through a lower-scoring relay",
+        "A",
+        "L",
+    )
+    simulation = build_simulation(scenario)
+
+    assert simulation.break_link("I", "L") == ("I", "L")
+    simulation.run()
+
+    message = simulation.messages[("interactive-message", "original")]
+    assert message.state is MessageState.DELIVERED
+    assert [hop.to_node for hop in message.hop_history] == ["C", "F", "I", "J", "L"]
+    assert any(
+        event.event_type is EventType.FORWARD_DECISION
+        and event.payload.get("from_node") == "I"
+        and event.payload.get("to_node") == "J"
+        and "detour" in str(event.payload.get("reason"))
+        for event in simulation.engine.event_log
+    )

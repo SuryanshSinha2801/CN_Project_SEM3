@@ -104,8 +104,10 @@ the complete deterministic trace. In the prepared presentation scenario:
 
 The right panel shows every event and the latest Adaptive decision, including normalized
 connectivity (C), proximity (P), buffer availability (B), node state (S), total scores,
-and the hysteresis threshold. Green lines are active contacts, dashed red lines are forced
-failures, and the gold ring identifies the current message custodian.
+and the hysteresis threshold. If no unvisited neighbor reaches that threshold, the router
+uses the best eligible neighbor as a loop-free detour and recalculates at the next node.
+Green lines are active contacts, dashed red lines are forced failures, and the gold ring
+identifies the current message custodian.
 
 For an interactive run, type a message, choose different source and destination nodes,
 leave **Automatic random failures** enabled, and click **Start Custom Message**, then
