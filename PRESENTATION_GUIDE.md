@@ -52,10 +52,11 @@ U = 0.35C + 0.35P + 0.20B + 0.10S
 - `S`: node-state utility.
 
 The copy prefers a candidate that improves the score by the configured hysteresis
-threshold. If none qualifies, the best eligible unvisited neighbor becomes a detour and
-the scores are recalculated after that hop. Visited-node history and a cooldown prevent
-immediate ping-pong forwarding. Every component and the reason to forward or hold is
-placed in the event trace.
+threshold. When an active end-to-end route exists, candidates that would lead to a
+visited-node dead end are excluded. If no route-capable candidate reaches the threshold,
+the best route-capable unvisited neighbor becomes a detour and the scores are recalculated
+after that hop. Visited-node history and a cooldown prevent immediate ping-pong
+forwarding. Every component and the reason to forward or hold is placed in the event trace.
 
 ### Epidemic
 

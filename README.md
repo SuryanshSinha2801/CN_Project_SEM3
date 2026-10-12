@@ -104,8 +104,9 @@ the complete deterministic trace. In the prepared presentation scenario:
 
 The right panel shows every event and the latest Adaptive decision, including normalized
 connectivity (C), proximity (P), buffer availability (B), node state (S), total scores,
-and the hysteresis threshold. If no unvisited neighbor reaches that threshold, the router
-uses the best eligible neighbor as a loop-free detour and recalculates at the next node.
+and the hysteresis threshold. Route-capable neighbors are preferred over branches that
+would become visited-node dead ends. If none reaches the threshold, the router uses the
+best route-capable neighbor as a loop-free detour and recalculates at the next node.
 Green lines are active contacts, dashed red lines are forced failures, and the gold ring
 identifies the current message custodian.
 
@@ -158,6 +159,17 @@ Run the automated tests:
 ```powershell
 python -m pytest
 ```
+
+Run the exhaustive rerouting matrix against the portable executable:
+
+```powershell
+.\dist\BLACKOUT_Portable\BLACKOUT_Simulator.exe --exhaustive-test
+```
+
+This writes `BLACKOUT_exhaustive_report.json` in the current directory. It checks every
+ordered source/destination pair with no failure, a seeded random failure, and every
+physical link removed individually. The command exits with code `0` only when all cases
+deliver without traversing or restoring the selected failed link.
 
 ## Development principles
 

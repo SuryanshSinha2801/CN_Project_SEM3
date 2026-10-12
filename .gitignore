@@ -25,6 +25,7 @@ portable-test/
 *.tar
 *.tar.gz
 *.zip
+BLACKOUT_exhaustive_report.json
 
 # Generated simulation output
 results/

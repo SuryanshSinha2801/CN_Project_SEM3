@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -143,17 +144,48 @@ class AdaptiveRouter:
                 holder, message, holder_score, "no eligible neighbor is available"
             )
 
-        peer, peer_score = min(
-            eligible,
-            key=lambda item: (
-                -item[1].total,
-                -item[1].proximity,
-                -item[1].buffer_availability,
-                item[0].node_id,
-            ),
-        )
+        route_capable = [
+            (peer, score, distance)
+            for peer, score in eligible
+            if (
+                distance := self._active_hop_distance(
+                    peer.node_id,
+                    message.destination,
+                    nodes,
+                    forbidden=message.visited_nodes | {holder.node_id},
+                )
+            )
+            is not None
+        ]
+        if route_capable:
+            peer, peer_score, path_hops = min(
+                route_capable,
+                key=lambda item: (
+                    -item[1].total,
+                    item[2],
+                    -item[1].proximity,
+                    -item[1].buffer_availability,
+                    item[0].node_id,
+                ),
+            )
+        else:
+            peer, peer_score = min(
+                eligible,
+                key=lambda item: (
+                    -item[1].total,
+                    -item[1].proximity,
+                    -item[1].buffer_availability,
+                    item[0].node_id,
+                ),
+            )
+            path_hops = None
         required_score = holder_score.total + self._weights.minimum_improvement
         if peer_score.total + 1e-12 < required_score:
+            path_detail = (
+                f"; active path to destination is {path_hops} hop(s)"
+                if path_hops is not None
+                else ""
+            )
             return self._forward_decision(
                 holder,
                 peer,
@@ -163,7 +195,8 @@ class AdaptiveRouter:
                 (
                     f"detour through best unvisited candidate {peer.node_id}; "
                     f"score {peer_score.total:.3f} is below hysteresis target "
-                    f"{required_score:.3f}, so scores will be recalculated after the hop"
+                    f"{required_score:.3f}{path_detail}, so scores will be "
+                    "recalculated after the hop"
                 ),
             )
 
@@ -178,6 +211,32 @@ class AdaptiveRouter:
                 f"{peer_score.total - holder_score.total:.3f}, meeting hysteresis"
             ),
         )
+
+    @staticmethod
+    def _active_hop_distance(
+        start: str,
+        destination: str,
+        nodes: Mapping[str, Node],
+        *,
+        forbidden: frozenset[str] | set[str],
+    ) -> int | None:
+        """Return a loop-free active-path distance, or ``None`` when unreachable."""
+
+        if start == destination:
+            return 0
+        unavailable = set(forbidden) - {start, destination}
+        visited = unavailable | {start}
+        queue: deque[tuple[str, int]] = deque([(start, 0)])
+        while queue:
+            node_id, distance = queue.popleft()
+            for neighbor_id in sorted(nodes[node_id].current_neighbors):
+                if neighbor_id in visited:
+                    continue
+                if neighbor_id == destination:
+                    return distance + 1
+                visited.add(neighbor_id)
+                queue.append((neighbor_id, distance + 1))
+        return None
 
     def record_transfer(
         self, message: Message, from_node: str, to_node: str, at_time: float
