@@ -117,7 +117,7 @@ selecting that node as a relay.
    when you want full manual control.
 4. Click **Start Custom Message**.
 5. Optionally choose an edge under **Link to fail** and click
-   **Break Selected Link (5s)**.
+   **Remove Selected Link**. It stays unavailable until **Reset** or a new simulation.
 6. Click **Play**.
 7. Point out the red failed link and the immediate `transfer_failed` event. The sender
    keeps custody, and later `forward_decision` events explain the alternate route.

@@ -257,7 +257,7 @@ class BlackoutApp:
         self.link_box.pack(side="left", padx=(4, 8))
         ttk.Button(
             failure_row,
-            text="Break Selected Link (5s)",
+            text="Remove Selected Link",
             command=self.break_selected_link,
         ).pack(side="left", padx=(0, 6))
         ttk.Button(
@@ -383,21 +383,21 @@ class BlackoutApp:
         )
 
     def break_selected_link(self) -> None:
-        """Fail the physical link selected by the presenter for five seconds."""
+        """Remove the selected physical link until the simulation is reset."""
 
         try:
             node_a, node_b = parse_link(self.link_var.get())
         except ValueError as exc:
             self.status_var.set(str(exc))
             return
-        link = self.simulation.break_link(node_a, node_b, duration_seconds=5)
+        link = self.simulation.break_link(node_a, node_b)
         if link is None:
             self.status_var.set(
                 f"Link {node_a}-{node_b} is unavailable or already failed"
             )
             return
         self.status_var.set(
-            f"Selected failure queued for {link[0]}-{link[1]}; "
+            f"Link {link[0]}-{link[1]} removed until reset; "
             "the router will find another path"
         )
 

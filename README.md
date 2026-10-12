@@ -113,7 +113,8 @@ leave **Automatic random failures** enabled, and click **Start Custom Message**,
 custody at the sender, and applies the routing policy to find an alternate contact. Use
 **Break Random Link** to inject another three-second failure manually. Alternatively,
 choose any currently usable edge under **Link to fail** and click
-**Break Selected Link (5s)** to demonstrate a specific outage and its alternate route.
+**Remove Selected Link** to keep that edge unavailable until the simulation is reset.
+The router must use another available path for the remainder of that run.
 
 The full presentation narrative is in [PRESENTATION_GUIDE.md](PRESENTATION_GUIDE.md).
 

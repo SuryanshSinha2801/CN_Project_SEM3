@@ -66,13 +66,13 @@ def test_random_active_link_failure_is_seeded_and_restored() -> None:
     assert len(failures) == 1
 
 
-def test_selected_link_failure_reroutes_and_is_restored() -> None:
+def test_selected_link_failure_reroutes_and_remains_blocked() -> None:
     scenario = load_scenario(PROJECT_ROOT / "configs" / "presentation.yaml")
     simulation = build_simulation(
         scenario.model_copy(update={"forced_link_failures": ()})
     )
 
-    failed_link = simulation.break_link("F", "H", duration_seconds=8)
+    failed_link = simulation.break_link("F", "H")
     simulation.run(until=0)
 
     assert failed_link == ("F", "H")
@@ -89,8 +89,13 @@ def test_selected_link_failure_reroutes_and_is_restored() -> None:
 
     assert message.state is MessageState.DELIVERED
     assert [hop.to_node for hop in message.hop_history] == ["B", "F", "I", "J", "D"]
-    assert failed_link not in simulation.topology.blocked_links
+    assert failed_link in simulation.topology.blocked_links
     assert len(manual_failures) == 1
+    assert not any(
+        event.event_type is EventType.LINK_RESTORED
+        and event.payload.get("manual_failure")
+        for event in simulation.engine.event_log
+    )
 
 
 def test_ttl_event_expires_message_and_reclaims_source_buffer() -> None:
